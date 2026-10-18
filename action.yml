@@ -1,0 +1,84 @@
+name: Contribution Tetris
+description: >-
+  Render a GitHub contribution graph as falling Tetris and LEGO bricks.
+  Writes one animated light SVG and one animated dark SVG.
+author: KenYanL
+
+branding:
+  icon: grid
+  color: green
+
+inputs:
+  github_user_name:
+    description: GitHub login whose contribution calendar is drawn.
+    required: true
+  svg_light_path:
+    description: File path for the light-theme SVG, relative to the workspace.
+    required: false
+    default: dist/tetris-contrib.svg
+  svg_dark_path:
+    description: File path for the dark-theme SVG, relative to the workspace.
+    required: false
+    default: dist/tetris-contrib-dark.svg
+  token:
+    description: >-
+      Token used to read the public contribution calendar. Defaults to the
+      calling workflow's GITHUB_TOKEN.
+    required: false
+    default: ${{ github.token }}
+  seed:
+    description: >-
+      Optional integer. The same seed always builds the same bricks. Leave
+      empty (or 0) for the stable pack.
+    required: false
+    default: "0"
+
+outputs:
+  svg_light_path:
+    description: Path of the light-theme SVG that was written.
+    value: ${{ steps.render.outputs.svg_light_path }}
+  svg_dark_path:
+    description: Path of the dark-theme SVG that was written.
+    value: ${{ steps.render.outputs.svg_dark_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Render contribution tetris SVGs
+      id: render
+      shell: bash
+      env:
+        TETRIS_USER: ${{ inputs.github_user_name }}
+        TETRIS_TOKEN: ${{ inputs.token }}
+        TETRIS_LIGHT: ${{ inputs.svg_light_path }}
+        TETRIS_DARK: ${{ inputs.svg_dark_path }}
+        TETRIS_SEED: ${{ inputs.seed }}
+      run: |
+        set -euo pipefail
+        if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+          echo "contrib-tetris needs Python 3.10 or newer (ubuntu-latest already has it)." >&2
+          exit 1
+        fi
+        token="${TETRIS_TOKEN:-}"
+        if [ -z "$token" ]; then
+          echo "contrib-tetris: pass a token, or leave it empty to use the workflow token." >&2
+          exit 1
+        fi
+        seed="${TETRIS_SEED:-0}"
+        if [ -z "$seed" ]; then
+          seed=0
+        fi
+        python3 "${{ github.action_path }}/generate.py" \
+          --username "$TETRIS_USER" \
+          --token "$token" \
+          --light "$TETRIS_LIGHT" \
+          --dark "$TETRIS_DARK" \
+          --seed "$seed"
+        {
+          echo "svg_light_path<<EOF"
+          echo "$TETRIS_LIGHT"
+          echo "EOF"
+          echo "svg_dark_path<<EOF"
+          echo "$TETRIS_DARK"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
