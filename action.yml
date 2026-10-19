@@ -1,4 +1,4 @@
-name: Contribution Tetris
+name: Contribution Brickfall
 description: >-
   Render a GitHub contribution graph as falling Tetris and LEGO bricks.
   Writes one animated light SVG and one animated dark SVG.
