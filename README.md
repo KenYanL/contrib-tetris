@@ -1,6 +1,16 @@
 # contrib-tetris
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
+  <img alt="KenYanL contribution graph assembling from Tetris bricks" src="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
+</picture>
+
+KenYanL's real contribution graph, rebuilt by falling bricks and refreshed daily.
+
 Contribution Brickfall (formerly Contribution Tetris) is a reusable GitHub Action that draws a contribution graph as falling Tetris bricks with LEGO studs. Pieces drop in and lock on the days they belong to, so the resting frame is the real calendar. Light and dark are separate animated SVGs, pure SVG and CSS, about 50KB each, with no extra packages.
+
+That preview is this HTML:
 
 ```html
 <picture>
