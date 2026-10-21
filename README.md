@@ -8,6 +8,8 @@
 
 KenYanL's real contribution graph, rebuilt by falling bricks and refreshed daily.
 
+*Reusable GitHub Action that renders a contribution graph as falling Tetris and LEGO bricks and writes one animated light SVG and one animated dark SVG.*
+
 Contribution Brickfall (formerly Contribution Tetris) is a reusable GitHub Action that draws a contribution graph as falling Tetris bricks with LEGO studs. Pieces drop in and lock on the days they belong to, so the resting frame is the real calendar. Light and dark are separate animated SVGs, pure SVG and CSS, about 50KB each, with no extra packages.
 
 That preview is this HTML:
@@ -86,6 +88,36 @@ The public contribution calendar is readable with the default workflow token.
 | --- | --- |
 | `svg_light_path` | Path of the light SVG that was written. |
 | `svg_dark_path` | Path of the dark SVG that was written. |
+
+## FAQ
+
+### How do I show it on a profile README?
+
+Paste the `<picture>` block from [Use it](#use-it) into the README of the repository that publishes the SVGs. For a GitHub profile, that repository is `YOUR_USERNAME/YOUR_USERNAME`. The first `<source>` is the dark SVG (`prefers-color-scheme: dark`), the second is the light SVG, and the `<img>` is the light file. Those URLs load the files from the `output` branch: `https://raw.githubusercontent.com/OWNER/REPO/output/tetris-contrib.svg` and `tetris-contrib-dark.svg`.
+
+### Which branch do the SVGs get published to, and why?
+
+The action writes both files in the job workspace. The defaults are `dist/tetris-contrib.svg` and `dist/tetris-contrib-dark.svg`. The example workflow then publishes the `dist/` directory to a branch named `output` with `crazy-max/ghaction-github-pages`, so those SVGs sit at the root of that branch and the raw URLs above resolve. `main` stays the action source. This repo's [`.github/workflows/tetris.yml`](.github/workflows/tetris.yml) does the same publish, and the publish job runs on the daily schedule, on `workflow_dispatch`, and on pushes to `main`. Pull requests run the test job only.
+
+### How often does it update, and how do I change the schedule?
+
+The schedule is the workflow's cron. The example and this repo both use `41 7 * * *` (07:41 UTC every day). Both also set `workflow_dispatch`, so the workflow can be run from the Actions tab. Change that cron to change how often the SVGs are regenerated.
+
+### What token and permissions does it need?
+
+`token` defaults to the calling workflow's `GITHUB_TOKEN` (`${{ github.token }}`). The action sends it as a bearer token to `https://api.github.com/graphql` and reads that login's contribution calendar. The public calendar is readable with that default token. An empty token fails the step. Publishing the `output` branch needs `contents: write` on the job that pushes. The example sets that at the workflow level. This repo's workflow leaves the default at `contents: read` and sets `contents: write` only on the publish job.
+
+### Why is the name Contribution Brickfall when usage is `uses: KenYanL/contrib-tetris@v1`?
+
+`name: Contribution Brickfall` in [`action.yml`](action.yml) is the display name. The action was formerly Contribution Tetris. `uses:` selects the repository and the ref, which are still `KenYanL/contrib-tetris` and `v1`, so the workflow line stays `uses: KenYanL/contrib-tetris@v1`.
+
+### How big are the files, and does it install anything?
+
+The action installs nothing. It runs `generate.py` with Python 3.10 or newer from the standard library, which `ubuntu-latest` already has. Each result is pure SVG and CSS (no `<script>`). The pinned sample in `sample/` is 48,956 bytes (light) and 48,959 bytes (dark). `generate.py` prints the byte size of each file as it writes it.
+
+### What happens with an empty or very small calendar?
+
+Days with no activity are still drawn. Level 0 is a flat square with no stud, and the caption is the real total: `0 contributions in the last year`, or `1 contribution in the last year` when the total is 1. If the API returns no days, the action fails with `no contribution days returned for <login>`. An unknown login fails with `GitHub user '<login>' was not found`. The board is 7 rows by the weeks in the profile window (53 in the pinned sample), and every cell is covered. When `7 × weeks` is not divisible by 4, the leftover cells are a tromino, a domino, or a single brick. The pinned 53-week sample leaves 3 such cells.
 
 ## How it is drawn
 
