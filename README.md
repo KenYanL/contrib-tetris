@@ -82,6 +82,8 @@ The public contribution calendar is readable with the default workflow token.
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, and a `seed` from -2147483648 to 2147483647.
+
 ### Outputs
 
 | Output | Description |

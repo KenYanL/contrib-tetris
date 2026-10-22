@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from generate import (  # noqa: E402
+    InputError,
+    checked_username,
+    parse_seed,
+    validate_output_path,
+)
 from brickfall import (  # noqa: E402
     ORIENTATIONS,
     SMALL_PIECES,
@@ -217,6 +224,200 @@ class GenerateCliTests(unittest.TestCase):
             self.assertIn("#aceebb", light.read_text(encoding="utf-8"))
             self.assertIn("#56d364", dark.read_text(encoding="utf-8"))
             self.assertLess(light.stat().st_size, 80_000)
+
+
+class InputValidationTests(unittest.TestCase):
+    def test_username_names_the_input_and_a_valid_login(self) -> None:
+        with self.assertRaises(InputError) as empty:
+            checked_username("", required=True)
+        self.assertIn("github_user_name", str(empty.exception))
+        self.assertIn("octocat", str(empty.exception))
+        self.assertIsNone(checked_username("", required=False))
+        self.assertIsNone(checked_username(None, required=False))
+        for bad in ("-ab", "ab-", "a--b", "has space", "a" * 40, "user_name", "."):
+            with self.assertRaises(InputError) as caught:
+                checked_username(bad, required=True)
+            message = str(caught.exception)
+            self.assertIn("github_user_name", message)
+            self.assertIn(bad, message)
+            self.assertIn("octocat", message)
+        self.assertEqual(checked_username("KenYanL", required=True), "KenYanL")
+        self.assertEqual(checked_username("a", required=True), "a")
+        self.assertEqual(checked_username("a-b", required=True), "a-b")
+
+    def test_seed_rejects_non_integers_and_out_of_range_values(self) -> None:
+        self.assertEqual(parse_seed("0"), 0)
+        self.assertEqual(parse_seed(0), 0)
+        self.assertEqual(parse_seed("+1"), 1)
+        self.assertEqual(parse_seed("-1"), -1)
+        self.assertEqual(parse_seed(str(2_147_483_647)), 2_147_483_647)
+        self.assertEqual(parse_seed(str(-2_147_483_648)), -2_147_483_648)
+        for bad in ("nope", "1.5", "", "2147483648", "-2147483649", True):
+            with self.assertRaises(InputError) as caught:
+                parse_seed(bad)
+            message = str(caught.exception)
+            self.assertIn("seed", message)
+            self.assertIn("-2147483648", message)
+            self.assertIn("2147483647", message)
+
+    def test_output_paths_name_the_input_and_an_example(self) -> None:
+        light = validate_output_path(
+            "dist/tetris-contrib.svg",
+            "svg_light_path (--light)",
+            example="dist/tetris-contrib.svg",
+            relative=True,
+        )
+        self.assertEqual(light.as_posix(), "dist/tetris-contrib.svg")
+        absolute = validate_output_path(
+            "/tmp/light.svg",
+            "svg_light_path (--light)",
+            example="dist/tetris-contrib.svg",
+            relative=False,
+        )
+        self.assertTrue(absolute.is_absolute())
+        for bad in ("", "   ", "dist/", "../x.svg", "dist/../x.svg", "file.png", "/tmp/a.svg", "a.svg\n"):
+            with self.assertRaises(InputError) as caught:
+                validate_output_path(
+                    bad,
+                    "svg_light_path (--light)",
+                    example="dist/tetris-contrib.svg",
+                    relative=True,
+                )
+            message = str(caught.exception)
+            self.assertIn("svg_light_path", message)
+            self.assertIn("dist/tetris-contrib.svg", message)
+
+    def test_cli_rejects_bad_inputs_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            light = Path(tmp) / "light.svg"
+            dark = Path(tmp) / "nested" / "dark.svg"
+            env = os.environ.copy()
+            env.pop("GITHUB_TOKEN", None)
+            env.pop("GITHUB_ACTOR", None)
+            env.pop("GITHUB_USERNAME", None)
+            env.pop("TETRIS_REQUIRE_RELATIVE", None)
+
+            empty_user = _run_generate(
+                ["--username", "", "--token", "dummy", "--light", str(light), "--dark", str(dark)],
+                env=env,
+            )
+            self.assertNotEqual(empty_user.returncode, 0)
+            self.assertIn("github_user_name", empty_user.stderr)
+            self.assertIn("octocat", empty_user.stderr)
+            self.assertNotIn("GraphQL", empty_user.stderr)
+            self.assertFalse(light.exists())
+
+            bad_name = _run_generate(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--username",
+                    "bad--name",
+                    "--light",
+                    str(light),
+                    "--dark",
+                    str(dark),
+                ],
+                env=env,
+            )
+            self.assertNotEqual(bad_name.returncode, 0)
+            self.assertIn("github_user_name", bad_name.stderr)
+            self.assertIn("bad--name", bad_name.stderr)
+            self.assertFalse(light.exists())
+
+            bad_seed = _run_generate(
+                ["--input", str(SAMPLE), "--light", str(light), "--dark", str(dark), "--seed", "nope"],
+                env=env,
+            )
+            self.assertNotEqual(bad_seed.returncode, 0)
+            self.assertIn("seed", bad_seed.stderr)
+            self.assertIn("-2147483648", bad_seed.stderr)
+            self.assertFalse(light.exists())
+
+            bad_path = _run_generate(
+                ["--input", str(SAMPLE), "--light", "../out.svg", "--dark", str(dark), "--seed", "0"],
+                env=env,
+            )
+            self.assertNotEqual(bad_path.returncode, 0)
+            self.assertIn("svg_light_path", bad_path.stderr)
+            self.assertIn("dist/tetris-contrib.svg", bad_path.stderr)
+            self.assertFalse(light.exists())
+            self.assertFalse(dark.exists())
+
+            same = _run_generate(
+                ["--input", str(SAMPLE), "--light", "dist/same.svg", "--dark", "dist/./same.svg", "--seed", "0"],
+                env=env,
+            )
+            self.assertNotEqual(same.returncode, 0)
+            self.assertIn("svg_light_path", same.stderr)
+            self.assertIn("svg_dark_path", same.stderr)
+
+            blank_token = _run_generate(
+                ["--username", "octocat", "--token", "  ", "--light", str(light), "--dark", str(dark)],
+                env=env,
+            )
+            self.assertNotEqual(blank_token.returncode, 0)
+            self.assertIn("token", blank_token.stderr)
+            self.assertIn("GITHUB_TOKEN", blank_token.stderr)
+            self.assertNotIn("GraphQL", blank_token.stderr)
+            self.assertFalse(light.exists())
+
+    def test_action_style_inputs_still_render(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["TETRIS_REQUIRE_RELATIVE"] = "1"
+            proc = _run_generate(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--username",
+                    "KenYanL",
+                    "--light",
+                    "dist/tetris-contrib.svg",
+                    "--dark",
+                    "dist/tetris-contrib-dark.svg",
+                    "--seed",
+                    "0",
+                ],
+                env=env,
+                cwd=tmp,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            light = Path(tmp) / "dist" / "tetris-contrib.svg"
+            dark = Path(tmp) / "dist" / "tetris-contrib-dark.svg"
+            self.assertIn("#aceebb", light.read_text(encoding="utf-8"))
+            self.assertIn("#56d364", dark.read_text(encoding="utf-8"))
+            self.assertIn("KenYanL", light.read_text(encoding="utf-8"))
+
+            absolute = _run_generate(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--light",
+                    str(Path(tmp) / "abs.svg"),
+                    "--dark",
+                    "dist/tetris-contrib-dark.svg",
+                    "--seed",
+                    "1",
+                ],
+                env=env,
+                cwd=tmp,
+            )
+            self.assertNotEqual(absolute.returncode, 0)
+            self.assertIn("svg_light_path", absolute.stderr)
+            self.assertIn("relative", absolute.stderr)
+            self.assertFalse((Path(tmp) / "abs.svg").exists())
+
+
+def _run_generate(args: list[str], *, env: dict[str, str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(ROOT / "generate.py"), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+    )
 
 
 def _tiny_calendar() -> Calendar:

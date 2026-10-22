@@ -10,26 +10,32 @@ branding:
 
 inputs:
   github_user_name:
-    description: GitHub login whose contribution calendar is drawn.
+    description: >-
+      GitHub login whose contribution calendar is drawn. 1-39 letters, digits,
+      or single hyphens; not empty, and not starting or ending with a hyphen.
     required: true
   svg_light_path:
-    description: File path for the light-theme SVG, relative to the workspace.
+    description: >-
+      Workspace-relative file path for the light-theme SVG. Must end in .svg
+      and must not contain '..'.
     required: false
     default: dist/tetris-contrib.svg
   svg_dark_path:
-    description: File path for the dark-theme SVG, relative to the workspace.
+    description: >-
+      Workspace-relative file path for the dark-theme SVG. Must end in .svg,
+      must not contain '..', and must differ from svg_light_path.
     required: false
     default: dist/tetris-contrib-dark.svg
   token:
     description: >-
-      Token used to read the public contribution calendar. Defaults to the
-      calling workflow's GITHUB_TOKEN.
+      Non-empty token used to read the public contribution calendar. Defaults
+      to the calling workflow's GITHUB_TOKEN.
     required: false
     default: ${{ github.token }}
   seed:
     description: >-
-      Optional integer. The same seed always builds the same bricks. Leave
-      empty (or 0) for the stable pack.
+      Integer from -2147483648 to 2147483647. The same seed always builds the
+      same bricks. Leave empty (or 0) for the stable pack.
     required: false
     default: "0"
 
@@ -53,6 +59,8 @@ runs:
         TETRIS_LIGHT: ${{ inputs.svg_light_path }}
         TETRIS_DARK: ${{ inputs.svg_dark_path }}
         TETRIS_SEED: ${{ inputs.seed }}
+        # generate.py keeps SVG paths inside the workspace when this is 1.
+        TETRIS_REQUIRE_RELATIVE: "1"
       run: |
         set -euo pipefail
         if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
@@ -61,7 +69,7 @@ runs:
         fi
         token="${TETRIS_TOKEN:-}"
         if [ -z "$token" ]; then
-          echo "contrib-tetris: pass a token, or leave it empty to use the workflow token." >&2
+          echo "contrib-tetris: token is empty. Pass a non-empty GitHub token that can read the contribution calendar, or omit token to use the calling workflow's GITHUB_TOKEN." >&2
           exit 1
         fi
         seed="${TETRIS_SEED:-0}"

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +28,129 @@ from brickfall import (  # noqa: E402
     render_svg,
 )
 
+# Inclusive. 0 is the stable pack; any other value in range only reorders equal choices.
+SEED_MIN = -2_147_483_648
+SEED_MAX = 2_147_483_647
+
+# GitHub login: 1-39 letters, digits, or single hyphens, not starting or ending with a hyphen.
+_USERNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
+_USERNAME_HINT = (
+    "a GitHub login of 1-39 letters, digits, or single hyphens, "
+    "not starting or ending with a hyphen (for example octocat)"
+)
+
+
+class InputError(ValueError):
+    """An action input or CLI flag is missing or not usable."""
+
+
+def fail(message: str) -> int:
+    print(f"contrib-tetris: {message}", file=sys.stderr)
+    return 1
+
+
+def parse_seed(raw: object) -> int:
+    """Return a packing seed, or raise InputError naming seed and the valid range."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        raise InputError(
+            f"seed (--seed) is {raw!r}, which is not an integer from {SEED_MIN} to {SEED_MAX}. "
+            "Use 0 for the stable pack, or another integer in that range."
+        )
+    if isinstance(raw, str):
+        try:
+            value = int(raw.strip())
+        except ValueError:
+            raise InputError(
+                f"seed (--seed) is {raw!r}, which is not an integer from {SEED_MIN} to {SEED_MAX}. "
+                "Use 0 for the stable pack, or another integer in that range."
+            ) from None
+    else:
+        value = raw
+    if value < SEED_MIN or value > SEED_MAX:
+        raise InputError(
+            f"seed (--seed) is {value}, which is outside {SEED_MIN} to {SEED_MAX}. "
+            "Use 0 for the stable pack, or another integer in that range."
+        )
+    return value
+
+
+def checked_username(username: str | None, *, required: bool) -> str | None:
+    """Return a usable login, or None when an optional override was omitted."""
+    if username is None or username == "":
+        if required:
+            raise InputError(
+                f"github_user_name (--username) is empty. Set it to {_USERNAME_HINT}."
+            )
+        return None
+    if _USERNAME.fullmatch(username) is None:
+        raise InputError(
+            f"github_user_name (--username) is {username!r}, which is not a GitHub login. "
+            f"Use {_USERNAME_HINT}."
+        )
+    return username
+
+
+def _relative_paths_required() -> bool:
+    # action.yml sets this so SVG paths stay inside the workspace. The CLI
+    # leaves it unset and still accepts absolute paths.
+    return os.environ.get("TETRIS_REQUIRE_RELATIVE") == "1"
+
+
+def validate_output_path(raw: str, name: str, *, example: str, relative: bool) -> Path:
+    """Return the SVG path to write, or raise InputError naming that input."""
+    if raw.strip() == "":
+        raise InputError(f"{name} is empty. Pass a file path ending in .svg, for example {example}.")
+    if raw != raw.strip() or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        raise InputError(
+            f"{name} is {raw!r}, which is not a valid file path. "
+            "Pass a file path ending in .svg with no leading or trailing whitespace "
+            f"and no control characters, for example {example}."
+        )
+    if raw.endswith(("/", "\\")):
+        raise InputError(
+            f"{name} is {raw!r}, which points at a directory. "
+            f"Pass a file path ending in .svg, for example {example}."
+        )
+    path = Path(raw)
+    if any(part == ".." for part in path.parts):
+        raise InputError(
+            f"{name} is {raw!r}, which must not contain '..'. "
+            f"Pass a file path ending in .svg, for example {example}."
+        )
+    if path.suffix.lower() != ".svg":
+        raise InputError(
+            f"{name} is {raw!r}, which must be a file path ending in .svg, for example {example}."
+        )
+    if relative and path.is_absolute():
+        raise InputError(
+            f"{name} is {raw!r}, which must be relative to the workspace, not an absolute path. "
+            f"Pass a file path ending in .svg, for example {example}."
+        )
+    return path
+
+
+def _same_output(left: Path, right: Path) -> bool:
+    def key(path: Path) -> tuple[str, ...]:
+        return tuple(part for part in path.parts if part != ".")
+
+    return key(left) == key(right)
+
+
+def _checked_token(token: str | None) -> str:
+    if token is None or token.strip() == "":
+        raise InputError(
+            "token (--token or $GITHUB_TOKEN) is empty. "
+            "Pass a non-empty GitHub token that can read the contribution calendar. "
+            "On the action, token defaults to the calling workflow's GITHUB_TOKEN."
+        )
+    if token != token.strip():
+        raise InputError(
+            "token (--token or $GITHUB_TOKEN) has leading or trailing whitespace. "
+            "Pass a non-empty GitHub token with no spaces around it. "
+            "On the action, token defaults to the calling workflow's GITHUB_TOKEN."
+        )
+    return token
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render a Tetris-style contribution calendar SVG.")
@@ -34,45 +159,83 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", type=Path, help="Read a previously saved contributions JSON instead of calling the API")
     parser.add_argument("--dump-json", type=Path, help="Write the normalized calendar JSON to this path")
     parser.add_argument("--out", type=Path, help="Directory for tetris-contrib.svg and tetris-contrib-dark.svg")
-    parser.add_argument("--light", type=Path, help="Write the light SVG to this path")
-    parser.add_argument("--dark", type=Path, help="Write the dark SVG to this path")
+    parser.add_argument("--light", help="Write the light SVG to this path")
+    parser.add_argument("--dark", help="Write the dark SVG to this path")
     parser.add_argument(
         "--seed",
-        type=int,
-        default=0,
-        help="Packing seed. 0 is the stable default; any other integer reorders equal tetromino choices",
+        default="0",
+        help=(
+            "Packing seed. An integer from -2147483648 to 2147483647. "
+            "0 is the stable default; any other integer in that range reorders equal tetromino choices"
+        ),
     )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
     args = parser.parse_args(argv)
 
-    if args.light or args.dark:
-        if args.light is None or args.dark is None:
-            parser.error("pass both --light and --dark")
-        outputs = {"light": args.light, "dark": args.dark}
-    elif args.out:
-        outputs = {
-            "light": args.out / "tetris-contrib.svg",
-            "dark": args.out / "tetris-contrib-dark.svg",
-        }
-    else:
-        parser.error("pass --out, or both --light and --dark")
-
-    if args.input:
-        calendar = calendar_from_json(json.loads(args.input.read_text(encoding="utf-8")))
-        if args.username:
-            calendar = calendar_from_json(
-                {**json.loads(args.input.read_text(encoding="utf-8")), "username": args.username}
+    try:
+        seed = parse_seed(args.seed)
+        relative = _relative_paths_required()
+        if args.light is not None or args.dark is not None:
+            if args.light is None or args.dark is None:
+                raise InputError(
+                    "svg_light_path (--light) and svg_dark_path (--dark) must both be set. "
+                    "For example --light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg."
+                )
+            light = validate_output_path(
+                args.light,
+                "svg_light_path (--light)",
+                example="dist/tetris-contrib.svg",
+                relative=relative,
             )
-    else:
-        import os
+            dark = validate_output_path(
+                args.dark,
+                "svg_dark_path (--dark)",
+                example="dist/tetris-contrib-dark.svg",
+                relative=relative,
+            )
+            if _same_output(light, dark):
+                raise InputError(
+                    "svg_light_path (--light) and svg_dark_path (--dark) point at the same file "
+                    f"({args.light!r} and {args.dark!r}). "
+                    "Pass two different file paths ending in .svg, "
+                    "for example dist/tetris-contrib.svg and dist/tetris-contrib-dark.svg."
+                )
+            outputs = {"light": light, "dark": dark}
+        elif args.out:
+            outputs = {
+                "light": args.out / "tetris-contrib.svg",
+                "dark": args.out / "tetris-contrib-dark.svg",
+            }
+        else:
+            raise InputError(
+                "pass an output directory with --out, or both svg_light_path (--light) and "
+                "svg_dark_path (--dark). For example --out dist, or "
+                "--light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg."
+            )
 
-        username = args.username or os.environ.get("GITHUB_USERNAME") or os.environ.get("GITHUB_ACTOR")
-        token = args.token or os.environ.get("GITHUB_TOKEN")
-        if not username or not token:
-            parser.error("provide --input, or --username and a token (--token or $GITHUB_TOKEN)")
-        calendar = fetch_calendar(username, token)
+        if args.input:
+            username = checked_username(args.username, required=False)
+            payload = json.loads(args.input.read_text(encoding="utf-8"))
+            if username is not None:
+                payload = {**payload, "username": username}
+            calendar = calendar_from_json(payload)
+        else:
+            if args.username is None:
+                username_raw = os.environ.get("GITHUB_USERNAME") or os.environ.get("GITHUB_ACTOR")
+            else:
+                # An explicit empty login must fail, not fall through to the actor.
+                username_raw = args.username
+            username = checked_username(username_raw, required=True)
+            token = _checked_token(args.token or os.environ.get("GITHUB_TOKEN"))
+            if username is None:
+                raise InputError(
+                    f"github_user_name (--username) is empty. Set it to {_USERNAME_HINT}."
+                )
+            calendar = fetch_calendar(username, token)
+    except InputError as exc:
+        return fail(str(exc))
 
-    pieces = pieces_for_calendar(calendar, seed=args.seed)
+    pieces = pieces_for_calendar(calendar, seed=seed)
     errors = coverage_errors(pieces, 7, calendar.columns)
     if errors:
         print("tiling failed:", "; ".join(errors[:8]), file=sys.stderr)
