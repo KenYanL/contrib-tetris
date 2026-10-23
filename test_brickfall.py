@@ -177,6 +177,35 @@ class WindowTests(unittest.TestCase):
 
 
 class SampleTests(unittest.TestCase):
+    def test_nonzero_contributions_render_colored_bricks(self) -> None:
+        """A calendar with activity must paint bricks other than the empty level.
+
+        The legend uses bl1–bl4 once each, so those swatches do not count.
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("make_demo", ROOT / "scripts" / "make_demo.py")
+        if spec is None or spec.loader is None:
+            self.fail("scripts/make_demo.py could not be loaded")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        calendar = _tiny_calendar()
+        self.assertGreater(calendar.total, 0)
+        payload = module.calendar_payload(calendar)
+        active = next(
+            day for week in payload["weeks"] for day in week if day["contributionCount"] > 0
+        )
+        self.assertEqual(active["contributionLevel"], "FIRST_QUARTILE")
+        self.assertNotIn("level", active)
+
+        loaded = calendar_from_json(payload)
+        self.assertGreater(sum(day.level > 0 for week in loaded.weeks for day in week), 0)
+        svg = render_svg(loaded, pieces_for_calendar(loaded), "light")
+        pieces = svg.split('<g class="piece"', 1)[1]
+        colored = sum(pieces.count(f'href="#bl{level}"') for level in range(1, 5))
+        self.assertGreater(colored, 0)
+
     def test_saved_calendar_matches_kenyanl_window(self) -> None:
         if not SAMPLE.exists():
             self.skipTest("sample calendar not generated yet")

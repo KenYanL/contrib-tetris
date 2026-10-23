@@ -20,8 +20,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from brickfall import Day, calendar_from_days, calendar_to_json, profile_window  # noqa: E402
+from brickfall import LEVEL_NAMES, Calendar, Day, calendar_from_days, profile_window  # noqa: E402
 from generate import main as generate_main  # noqa: E402
+
+# Inverse of brickfall.LEVEL_NAMES. generate.py reads contributionLevel
+# (NONE / FIRST_QUARTILE / ...), the enum the GitHub API returns. An integer
+# "level" field is ignored and every day is treated as empty.
+_LEVEL_NAME = {value: name for name, value in LEVEL_NAMES.items()}
 
 # Same seed always rebuilds the same calendar and the same SVGs.
 SEED = 20261023
@@ -115,6 +120,32 @@ def _levels(counts: list[int]) -> list[int]:
     return levels
 
 
+def calendar_payload(calendar: Calendar) -> dict:
+    """Calendar JSON in the shape ``generate.py --input`` parses.
+
+    Days use ``contributionCount`` and ``contributionLevel`` so the loader
+    keeps the quartile colors. ``calendar_to_json`` writes ``count`` and
+    integer ``level``, and the level is dropped on read.
+    """
+    return {
+        "username": calendar.username,
+        "total": calendar.total,
+        "start": calendar.start.isoformat(),
+        "end": calendar.end.isoformat(),
+        "weeks": [
+            [
+                {
+                    "date": day.date.isoformat(),
+                    "contributionCount": day.count,
+                    "contributionLevel": _LEVEL_NAME[day.level],
+                }
+                for day in week
+            ]
+            for week in calendar.weeks
+        ],
+    }
+
+
 def synthetic_calendar():
     rng = random.Random(SEED)
     start, end = profile_window(AS_OF)
@@ -136,7 +167,7 @@ def main() -> int:
     demo = ROOT / "demo"
     demo.mkdir(parents=True, exist_ok=True)
     payload = demo / "contributions.json"
-    payload.write_text(json.dumps(calendar_to_json(calendar), indent=2) + "\n", encoding="utf-8")
+    payload.write_text(json.dumps(calendar_payload(calendar), indent=2) + "\n", encoding="utf-8")
     code = generate_main(
         [
             "--input",
