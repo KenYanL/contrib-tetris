@@ -1,12 +1,12 @@
 # contrib-tetris
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
-  <img alt="KenYanL contribution graph assembling from Tetris bricks" src="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib.svg" />
+  <img alt="Demo contribution graph assembling from Tetris bricks" src="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib.svg" />
 </picture>
 
-KenYanL's real contribution graph, rebuilt by falling bricks and refreshed daily.
+A demo with randomly generated contributions, rebuilt by falling bricks.
 
 *Reusable GitHub Action that renders a contribution graph as falling Tetris and LEGO bricks and writes one animated light SVG and one animated dark SVG.*
 
@@ -16,13 +16,13 @@ That preview is this HTML:
 
 ```html
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
-  <img alt="KenYanL contribution graph assembling from Tetris bricks" src="https://raw.githubusercontent.com/KenYanL/contrib-tetris/output/tetris-contrib.svg" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib.svg" />
+  <img alt="Demo contribution graph assembling from Tetris bricks" src="https://raw.githubusercontent.com/KenYanL/contrib-tetris/main/demo/tetris-contrib.svg" />
 </picture>
 ```
 
-The daily workflow republishes those two files on the [`output`](https://github.com/KenYanL/contrib-tetris/tree/output) branch. `sample/` is a pinned copy of KenYanL's calendar for 2025-10-12 through 2026-10-17 (168 contributions).
+Those files are committed in `demo/`. `scripts/make_demo.py` rebuilds them from a fixed random seed. `sample/` is a pinned copy of KenYanL's calendar for 2025-10-12 through 2026-10-17 (168 contributions).
 
 ## Use it
 
