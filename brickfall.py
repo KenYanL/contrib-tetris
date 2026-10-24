@@ -178,6 +178,12 @@ def _parse_day(raw: dict) -> Day:
 
 
 def calendar_from_days(username: str, start: date, end: date, days: Iterable[Day]) -> Calendar:
+    if end < start:
+        raise ValueError(f"window {start}..{end} is not a whole number of weeks")
+    # A partial first week, and a 366-day leap year, are not Sunday-to-Saturday.
+    # Pad so row 0 stays Sunday; missing days are empty contributions.
+    start = start - timedelta(days=(start.weekday() + 1) % 7)
+    end = end + timedelta(days=(5 - end.weekday()) % 7)
     span = (end - start).days + 1
     if span % 7 != 0 or span < 7:
         raise ValueError(f"window {start}..{end} is not a whole number of weeks")

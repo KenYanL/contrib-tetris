@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -174,6 +174,112 @@ class WindowTests(unittest.TestCase):
         start, end = profile_window(date(2028, 2, 29))
         self.assertEqual(start.weekday(), 6)
         self.assertEqual(end.weekday(), 5)
+
+
+class CalendarEdgeTests(unittest.TestCase):
+    def test_empty_calendar_draws_zero_contributions(self) -> None:
+        """No weeks, and a year of zeros, both draw flat empty bricks."""
+        empty = calendar_from_json(
+            {
+                "username": "empty",
+                "start": "2026-10-11",
+                "end": "2026-10-17",
+                "weeks": [],
+            }
+        )
+        self.assertEqual(empty.columns, 1)
+        self.assertEqual(empty.total, 0)
+        self.assertEqual(len(empty.weeks[0]), 7)
+        self.assertTrue(all(day.count == 0 and day.level == 0 for day in empty.weeks[0]))
+        pieces = pieces_for_calendar(empty)
+        self.assertEqual(coverage_errors(pieces, 7, empty.columns), [])
+        svg = render_svg(empty, pieces, "light")
+        self.assertIn(">0 contributions in the last year<", svg)
+        body = svg.split('<g class="piece"', 1)[1]
+        self.assertEqual(body.count('href="#bl0"'), 7)
+        self.assertEqual(sum(body.count(f'href="#bl{level}"') for level in range(1, 5)), 0)
+        self.assertNotIn("<script", svg)
+
+        quiet = calendar_from_json(_json_calendar("quiet", date(2026, 10, 11), date(2026, 10, 24)))
+        self.assertEqual(quiet.columns, 2)
+        self.assertEqual(quiet.total, 0)
+        self.assertGreater(sum(len(week) for week in quiet.weeks), 0)
+        self.assertTrue(all(day.count == 0 and day.level == 0 for week in quiet.weeks for day in week))
+        pieces = pieces_for_calendar(quiet)
+        self.assertEqual(coverage_errors(pieces, 7, quiet.columns), [])
+        svg = render_svg(quiet, pieces, "light")
+        self.assertIn(">0 contributions in the last year<", svg)
+        body = svg.split('<g class="piece"', 1)[1]
+        self.assertEqual(body.count('href="#bl0"'), 14)
+        self.assertNotIn("<circle", body)
+
+    def test_leap_year_keeps_all_366_days(self) -> None:
+        """Jan 1 through Dec 31 of a leap year is 366 days and includes Feb 29."""
+        start = date(2024, 1, 1)
+        end = date(2024, 12, 31)
+        leap = date(2024, 2, 29)
+        payload = _json_calendar("leap", start, end, {leap: (4, 4)})
+        self.assertEqual(sum(len(week) for week in payload["weeks"]), 366)
+        self.assertLess(len(payload["weeks"][0]), 7)
+
+        calendar = calendar_from_json(payload)
+        dates = [day.date for week in calendar.weeks for day in week]
+        self.assertEqual(sum(day.year == 2024 for day in dates), 366)
+        self.assertEqual(len(dates), len(set(dates)))
+        index = dates.index(leap)
+        self.assertEqual(dates[index - 1], date(2024, 2, 28))
+        self.assertEqual(dates[index + 1], date(2024, 3, 1))
+        self.assertEqual(index % 7, 4)
+        self.assertEqual(calendar.weeks[index // 7][4].count, 4)
+        self.assertEqual(calendar.total, 4)
+        self.assertEqual(calendar.start.weekday(), 6)
+        self.assertEqual(calendar.end.weekday(), 5)
+        self.assertTrue(all(len(week) == 7 for week in calendar.weeks))
+
+        pieces = pieces_for_calendar(calendar)
+        self.assertEqual(coverage_errors(pieces, 7, calendar.columns), [])
+        svg = render_svg(calendar, pieces, "dark")
+        self.assertIn(">4 contributions in the last year<", svg)
+        self.assertIn(calendar.start.isoformat(), svg)
+        self.assertIn(calendar.end.isoformat(), svg)
+        body = svg.split('<g class="piece"', 1)[1]
+        self.assertEqual(body.count('href="#bd4"'), 1)
+        self.assertNotIn("<script", svg)
+
+    def test_partial_first_week_aligns_to_sunday(self) -> None:
+        """A first week with fewer than 7 days still uses Sunday as row 0.
+
+        2026-10-14 is a Wednesday and 2026-10-27 is a Tuesday, so the 14 days
+        are a whole number of weeks, but the first Sunday week only holds
+        Wednesday through Saturday. Packing from the first date would label
+        Thursday as Monday.
+        """
+        start = date(2026, 10, 14)
+        end = date(2026, 10, 27)
+        payload = _json_calendar("partial", start, end, {start: (3, 2)})
+        self.assertEqual(len(payload["weeks"][0]), 4)
+        self.assertLess(len(payload["weeks"][0]), 7)
+
+        calendar = calendar_from_json(payload)
+        self.assertEqual(calendar.start, date(2026, 10, 11))
+        self.assertEqual(calendar.end, date(2026, 10, 31))
+        self.assertEqual(calendar.start.weekday(), 6)
+        self.assertEqual(calendar.end.weekday(), 5)
+        self.assertTrue(all(len(week) == 7 for week in calendar.weeks))
+        self.assertEqual([day.count for day in calendar.weeks[0][:4]], [0, 0, 0, 3])
+        self.assertEqual(calendar.weeks[0][3].date, start)
+        self.assertEqual(calendar.weeks[0][3].level, 2)
+        self.assertEqual(calendar.total, 3)
+
+        pieces = pieces_for_calendar(calendar)
+        self.assertEqual(coverage_errors(pieces, 7, calendar.columns), [])
+        svg = render_svg(calendar, pieces, "light")
+        self.assertIn(">3 contributions in the last year<", svg)
+        self.assertIn(">Oct<", svg)
+        self.assertIn(">Wed<", svg)
+        body = svg.split('<g class="piece"', 1)[1]
+        self.assertGreater(body.count('href="#bl2"'), 0)
+        self.assertNotIn("<script", svg)
 
 
 class SampleTests(unittest.TestCase):
@@ -447,6 +553,45 @@ def _run_generate(args: list[str], *, env: dict[str, str], cwd: str | None = Non
         env=env,
         cwd=cwd,
     )
+
+
+def _json_calendar(
+    username: str,
+    start: date,
+    end: date,
+    counts: dict[date, tuple[int, int]] | None = None,
+) -> dict:
+    """Days from ``start`` through ``end``, split on Sunday.
+
+    The first and last groups stay short when the range does not open on
+    Sunday or close on Saturday. That is the shape a partial week arrives in.
+    """
+    counts = counts or {}
+    level_names = ("NONE", "FIRST_QUARTILE", "SECOND_QUARTILE", "THIRD_QUARTILE", "FOURTH_QUARTILE")
+    weeks: list[list[dict]] = []
+    column: list[dict] = []
+    day = start
+    while day <= end:
+        if column and (day.weekday() + 1) % 7 == 0:
+            weeks.append(column)
+            column = []
+        count, level = counts.get(day, (0, 0))
+        column.append(
+            {
+                "date": day.isoformat(),
+                "contributionCount": count,
+                "contributionLevel": level_names[level],
+            }
+        )
+        day += timedelta(days=1)
+    if column:
+        weeks.append(column)
+    return {
+        "username": username,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "weeks": weeks,
+    }
 
 
 def _tiny_calendar() -> Calendar:
