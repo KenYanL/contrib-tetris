@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -71,6 +72,28 @@ def parse_seed(raw: object) -> int:
             f"seed (--seed) is {value}, which is outside {SEED_MIN} to {SEED_MAX}. "
             "Use 0 for the stable pack, or another integer in that range."
         )
+    return value
+
+
+def parse_speed(raw: object) -> float:
+    """Return a positive animation multiplier, or raise InputError naming speed.
+
+    1 keeps the normal pace. 2 plays twice as fast and 0.5 plays at half speed.
+    """
+    hint = "Use 1 for the normal pace, 2 to play twice as fast, or 0.5 to play at half speed."
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        raise InputError(f"speed (--speed) is {raw!r}, which is not a positive number. {hint}")
+    if isinstance(raw, str):
+        try:
+            value = float(raw.strip())
+        except ValueError:
+            raise InputError(
+                f"speed (--speed) is {raw!r}, which is not a positive number. {hint}"
+            ) from None
+    else:
+        value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise InputError(f"speed (--speed) is {raw!r}, which is not a positive number. {hint}")
     return value
 
 
@@ -169,11 +192,21 @@ def main(argv: list[str] | None = None) -> int:
             "0 is the stable default; any other integer in that range reorders equal tetromino choices"
         ),
     )
+    parser.add_argument(
+        "--speed",
+        default="1.0",
+        help=(
+            "Animation speed as a positive multiplier. "
+            "1 is the normal pace; 2 plays twice as fast and 0.5 plays at half speed. "
+            "The bricks and the resting calendar stay the same"
+        ),
+    )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
     args = parser.parse_args(argv)
 
     try:
         seed = parse_seed(args.seed)
+        speed = parse_speed(args.speed)
         relative = _relative_paths_required()
         if args.light is not None or args.dark is not None:
             if args.light is None or args.dark is None:
@@ -247,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for theme, path in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        svg = render_svg(calendar, pieces, theme)
+        svg = render_svg(calendar, pieces, theme, speed=speed)
         path.write_text(svg, encoding="utf-8")
         print(f"{path} {len(svg.encode())} bytes")
 

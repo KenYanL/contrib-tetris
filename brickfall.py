@@ -686,7 +686,18 @@ def _joints(piece: Piece, levels: list[list[int]], origin_x: float, origin_y: fl
     return "".join(parts)
 
 
-def _fall_css(timeline: Timeline) -> str:
+def _at_speed(seconds: float, speed: float) -> float:
+    """Scale one timeline value by a positive speed multiplier.
+
+    A speed of 1 returns ``seconds`` unchanged, so the default SVG stays
+    byte-for-byte the same. Larger speeds shorten every delay and the loop.
+    """
+    if speed == 1.0:
+        return seconds
+    return seconds / speed
+
+
+def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
     drop = timeline.drop
     fall = timeline.fall
     bounce = timeline.bounce
@@ -718,7 +729,7 @@ def _fall_css(timeline: Timeline) -> str:
         f"{_percent(lock_end, total)}%{{opacity:0}}"
         f"100%{{opacity:0}}"
     )
-    duration = _fmt(total)
+    duration = _fmt(_at_speed(total, speed))
     return (
         ".piece{animation:fall "
         + duration
@@ -735,7 +746,7 @@ def _fall_css(timeline: Timeline) -> str:
     )
 
 
-def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str) -> str:
+def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str, *, speed: float = 1.0) -> str:
     if theme not in PALETTES:
         raise ValueError(f"unknown theme {theme!r}")
     palette = PALETTES[theme]
@@ -758,7 +769,7 @@ def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str) -> str:
     counts: dict[str, int] = {}
     for index, piece in enumerate(ordered):
         counts[piece.name] = counts.get(piece.name, 0) + 1
-        delay = _fmt(timeline.delays[index])
+        delay = _fmt(_at_speed(timeline.delays[index], speed))
         joints = _joints(piece, levels, origin_x, origin_y, palette)
         cells = []
         for row, col in piece.cells:
@@ -797,7 +808,7 @@ def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str) -> str:
         f"{sentence}. Pieces fall into the contribution calendar "
         f"from {cal.start.isoformat()} to {cal.end.isoformat()}."
     )
-    css = _fall_css(timeline)
+    css = _fall_css(timeline, speed)
     font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

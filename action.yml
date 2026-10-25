@@ -38,6 +38,13 @@ inputs:
       same bricks. Leave empty (or 0) for the stable pack.
     required: false
     default: "0"
+  speed:
+    description: >-
+      Positive animation speed. 1 plays at the normal pace, 2 plays twice as
+      fast, and 0.5 plays at half speed. The bricks do not change. An empty
+      value is rejected; omit the input to keep the normal pace.
+    required: false
+    default: "1.0"
 
 outputs:
   svg_light_path:
@@ -59,6 +66,7 @@ runs:
         TETRIS_LIGHT: ${{ inputs.svg_light_path }}
         TETRIS_DARK: ${{ inputs.svg_dark_path }}
         TETRIS_SEED: ${{ inputs.seed }}
+        TETRIS_SPEED: ${{ inputs.speed }}
         # generate.py keeps SVG paths inside the workspace when this is 1.
         TETRIS_REQUIRE_RELATIVE: "1"
       run: |
@@ -81,7 +89,8 @@ runs:
           --token "$token" \
           --light "$TETRIS_LIGHT" \
           --dark "$TETRIS_DARK" \
-          --seed "$seed"
+          --seed "$seed" \
+          --speed "${TETRIS_SPEED-1.0}"
         {
           echo "svg_light_path<<EOF"
           echo "$TETRIS_LIGHT"

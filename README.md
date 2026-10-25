@@ -50,6 +50,7 @@ jobs:
           svg_dark_path: dist/tetris-contrib-dark.svg
           # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token
           # seed: "1"                            # optional; omit for the stable pack
+          # speed: "1.0"                         # optional; 2 plays twice as fast, 0.5 at half speed
 
       - name: Publish SVGs to the output branch
         uses: crazy-max/ghaction-github-pages@v5
@@ -81,8 +82,9 @@ The public contribution calendar is readable with the default workflow token.
 | `svg_dark_path` | no | `dist/tetris-contrib-dark.svg` | Where to write the dark SVG. |
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
+| `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
 
-Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, and a `seed` from -2147483648 to 2147483647.
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, and a positive `speed` such as `1`, `2`, or `0.5`.
 
 ### Outputs
 

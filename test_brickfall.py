@@ -16,6 +16,7 @@ from generate import (  # noqa: E402
     InputError,
     checked_username,
     parse_seed,
+    parse_speed,
     validate_output_path,
 )
 from brickfall import (  # noqa: E402
@@ -159,6 +160,30 @@ class TimelineTests(unittest.TestCase):
         self.assertIn("translateY(", head)
         self.assertIn("translateY(", tail)
         self.assertNotIn("<script", svg)
+
+    def test_speed_one_matches_the_default_and_other_speeds_scale_time(self) -> None:
+        calendar = _tiny_calendar()
+        pieces = pieces_for_calendar(calendar)
+        default = render_svg(calendar, pieces, "light")
+        explicit = render_svg(calendar, pieces, "light", speed=1.0)
+        fast = render_svg(calendar, pieces, "light", speed=2)
+        slow = render_svg(calendar, pieces, "light", speed=0.5)
+        self.assertEqual(default, explicit)
+        self.assertEqual(_fall_frames(default), _fall_frames(fast))
+        self.assertEqual(_fall_frames(default), _fall_frames(slow))
+        self.assertEqual(_brick_refs(default), _brick_refs(fast))
+        self.assertEqual(_brick_refs(default), _brick_refs(slow))
+        default_duration, default_delays = _animation_clock(default)
+        fast_duration, fast_delays = _animation_clock(fast)
+        slow_duration, slow_delays = _animation_clock(slow)
+        self.assertAlmostEqual(fast_duration * 2, default_duration, places=3)
+        self.assertAlmostEqual(slow_duration, default_duration * 2, places=3)
+        self.assertEqual(len(fast_delays), len(default_delays))
+        self.assertEqual(len(slow_delays), len(default_delays))
+        for normal_delay, fast_delay, slow_delay in zip(default_delays, fast_delays, slow_delays):
+            self.assertAlmostEqual(fast_delay * 2, normal_delay, places=3)
+            self.assertAlmostEqual(slow_delay, normal_delay * 2, places=3)
+        self.assertNotEqual(fast_duration, default_duration)
 
 
 class WindowTests(unittest.TestCase):
@@ -395,6 +420,22 @@ class InputValidationTests(unittest.TestCase):
             self.assertIn("-2147483648", message)
             self.assertIn("2147483647", message)
 
+    def test_speed_rejects_non_numeric_and_non_positive(self) -> None:
+        self.assertEqual(parse_speed("1"), 1.0)
+        self.assertEqual(parse_speed("1.0"), 1.0)
+        self.assertEqual(parse_speed(1), 1.0)
+        self.assertEqual(parse_speed(1.0), 1.0)
+        self.assertEqual(parse_speed("2"), 2.0)
+        self.assertEqual(parse_speed("+0.5"), 0.5)
+        self.assertEqual(parse_speed(" 2.5 "), 2.5)
+        for bad in ("nope", "", "   ", "0", "0.0", "-1", "-0.5", "inf", "nan", "1.2.3", True, None):
+            with self.assertRaises(InputError) as caught:
+                parse_speed(bad)
+            message = str(caught.exception)
+            self.assertIn("speed", message)
+            self.assertIn("positive", message)
+            self.assertIn("0.5", message)
+
     def test_output_paths_name_the_input_and_an_example(self) -> None:
         light = validate_output_path(
             "dist/tetris-contrib.svg",
@@ -542,6 +583,109 @@ class InputValidationTests(unittest.TestCase):
             self.assertIn("svg_light_path", absolute.stderr)
             self.assertIn("relative", absolute.stderr)
             self.assertFalse((Path(tmp) / "abs.svg").exists())
+
+    def test_cli_rejects_bad_speed_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            light = Path(tmp) / "light.svg"
+            dark = Path(tmp) / "dark.svg"
+            missing = Path(tmp) / "missing.json"
+            env = os.environ.copy()
+            for bad in ("nope", "0", "-1", ""):
+                proc = _run_generate(
+                    [
+                        "--input",
+                        str(missing),
+                        "--light",
+                        str(light),
+                        "--dark",
+                        str(dark),
+                        "--speed",
+                        bad,
+                    ],
+                    env=env,
+                )
+                self.assertNotEqual(proc.returncode, 0, bad)
+                self.assertIn("speed", proc.stderr)
+                self.assertIn("positive", proc.stderr)
+                self.assertIn("0.5", proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertFalse(light.exists())
+                self.assertFalse(dark.exists())
+                self.assertFalse(missing.exists())
+
+    def test_cli_default_speed_matches_one_and_faster_speed_scales(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (3, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            env = os.environ.copy()
+            written: dict[str, tuple[str, str]] = {}
+            for name, extra in (
+                ("normal", []),
+                ("explicit", ["--speed", "1.0"]),
+                ("fast", ["--speed", "2"]),
+            ):
+                folder = Path(tmp) / name
+                proc = _run_generate(
+                    ["--input", str(source), "--out", str(folder), *extra],
+                    env=env,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                written[name] = (
+                    (folder / "tetris-contrib.svg").read_text(encoding="utf-8"),
+                    (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8"),
+                )
+            self.assertEqual(written["normal"], written["explicit"])
+            normal_light, normal_dark = written["normal"]
+            fast_light, fast_dark = written["fast"]
+            normal_duration, _delays = _animation_clock(normal_light)
+            fast_duration, _fast_delays = _animation_clock(fast_light)
+            self.assertAlmostEqual(fast_duration * 2, normal_duration, places=3)
+            self.assertEqual(_fall_frames(normal_light), _fall_frames(fast_light))
+            self.assertEqual(_fall_frames(normal_dark), _fall_frames(fast_dark))
+            self.assertNotEqual(normal_light, fast_light)
+
+
+def _fall_frames(svg: str) -> str:
+    start = svg.index("@keyframes fall{") + len("@keyframes fall{")
+    return svg[start : svg.index("}@keyframes lock", start)]
+
+
+def _brick_refs(svg: str) -> list[str]:
+    needle = 'href="#'
+    refs: list[str] = []
+    start = 0
+    while True:
+        found = svg.find(needle, start)
+        if found == -1:
+            return refs
+        end = svg.index('"', found + len(needle))
+        refs.append(svg[found + len(needle) : end])
+        start = end
+
+
+def _animation_clock(svg: str) -> tuple[float, list[float]]:
+    marker = "animation:fall "
+    start = svg.index(marker) + len(marker)
+    duration = float(svg[start : svg.index("s ", start)])
+    needle = "animation-delay:"
+    delays: list[float] = []
+    cursor = 0
+    while True:
+        found = svg.find(needle, cursor)
+        if found == -1:
+            return duration, delays
+        found += len(needle)
+        end = svg.index("s", found)
+        delays.append(float(svg[found:end]))
+        cursor = end
 
 
 def _run_generate(args: list[str], *, env: dict[str, str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
