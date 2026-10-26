@@ -24,6 +24,8 @@ That preview is this HTML:
 
 Those files are committed in `demo/`. `scripts/make_demo.py` rebuilds them from a fixed random seed. `sample/` is a pinned copy of KenYanL's calendar for 2025-10-12 through 2026-10-17 (168 contributions).
 
+See [CHANGELOG.md](CHANGELOG.md) for the history of this action.
+
 ## Use it
 
 ```yaml
