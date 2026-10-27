@@ -3,13 +3,16 @@
 
 Writes demo/contributions.json, then renders demo/tetris-contrib.svg and
 demo/tetris-contrib-dark.svg with generate.py. The calendar is not anyone's
-real contribution history.
+real contribution history. ``--out`` writes that same trio somewhere else
+and leaves the committed demo alone.
 
     python3 scripts/make_demo.py
+    python3 scripts/make_demo.py --out /tmp/brickfall-demo
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import random
@@ -162,9 +165,16 @@ def synthetic_calendar():
     return calendar_from_days(USERNAME, start, end, days)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Rebuild the synthetic README demo from a fixed seed.")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="Directory for contributions.json and the two SVGs. Defaults to demo/.",
+    )
+    args = parser.parse_args(argv)
     calendar = synthetic_calendar()
-    demo = ROOT / "demo"
+    demo = ROOT / "demo" if args.out is None else args.out
     demo.mkdir(parents=True, exist_ok=True)
     payload = demo / "contributions.json"
     payload.write_text(json.dumps(calendar_payload(calendar), indent=2) + "\n", encoding="utf-8")

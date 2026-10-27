@@ -8,6 +8,10 @@ and `v1.2.0` point at the 2026-10-27 release.
 
 ## [Unreleased]
 
+### Added
+
+- A unit test rebuilds the seeded README demo in a temporary directory and fails when `demo/` drifts from `scripts/make_demo.py`, which now accepts `--out` (default `demo/`) so that check does not overwrite the committed files (2026-10-27).
+
 ## [v1.2.0] - 2026-10-27
 
 ### Added

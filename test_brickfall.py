@@ -355,6 +355,37 @@ class SampleTests(unittest.TestCase):
             self.assertLess(len(svg.encode()), 1_500_000)
 
 
+class DemoTests(unittest.TestCase):
+    def test_committed_demo_matches_seeded_rebuild(self) -> None:
+        """The README preview stays the seeded synthetic demo, not a live calendar."""
+        names = ("contributions.json", "tetris-contrib.svg", "tetris-contrib-dark.svg")
+        committed = ROOT / "demo"
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "make_demo.py"), "--out", tmp],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            rebuilt_root = Path(tmp)
+            for name in names:
+                rebuilt = rebuilt_root / name
+                original = committed / name
+                self.assertTrue(rebuilt.is_file(), name)
+                self.assertTrue(
+                    original.is_file(),
+                    f"demo/{name} is missing. Rerun scripts/make_demo.py.",
+                )
+                if rebuilt.read_bytes() != original.read_bytes():
+                    self.fail(
+                        f"demo/{name} does not match the seeded rebuild. Rerun scripts/make_demo.py."
+                    )
+            light = (rebuilt_root / "tetris-contrib.svg").read_text(encoding="utf-8")
+            self.assertIn(">demo contributions, built from falling bricks<", light)
+            self.assertNotIn("KenYanL", light)
+
+
 class GenerateCliTests(unittest.TestCase):
     def test_explicit_paths_and_default_seed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
