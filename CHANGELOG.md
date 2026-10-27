@@ -3,10 +3,12 @@
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Dates are the commit dates. The `v1` and `v1.1.0` tags both point at the
-2026-10-21 commit; everything after that is unreleased.
+Dates are the commit dates. `v1.1.0` points at the 2026-10-21 commit. `v1`
+and `v1.2.0` point at the 2026-10-27 release.
 
 ## [Unreleased]
+
+## [v1.2.0] - 2026-10-27
 
 ### Added
 
@@ -34,5 +36,6 @@ Dates are the commit dates. The `v1` and `v1.1.0` tags both point at the
 
 - Display name renamed from Contribution Tetris to Contribution Brickfall. The Marketplace name Contribution Tetris was already taken. The repository slug and `uses:` references stay `contrib-tetris` (2026-10-19).
 
-[Unreleased]: https://github.com/KenYanL/contrib-tetris/compare/v1...HEAD
+[Unreleased]: https://github.com/KenYanL/contrib-tetris/compare/v1.2.0...HEAD
+[v1.2.0]: https://github.com/KenYanL/contrib-tetris/compare/v1.1.0...v1.2.0
 [v1]: https://github.com/KenYanL/contrib-tetris/releases/tag/v1
