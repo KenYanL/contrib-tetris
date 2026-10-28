@@ -180,7 +180,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--username", help="GitHub login whose calendar should be drawn")
     parser.add_argument("--token", help="GitHub token with access to the contribution calendar. Defaults to $GITHUB_TOKEN")
     parser.add_argument("--input", type=Path, help="Read a previously saved contributions JSON instead of calling the API")
-    parser.add_argument("--dump-json", type=Path, help="Write the normalized calendar JSON to this path")
+    parser.add_argument(
+        "--dump-json",
+        type=Path,
+        help=(
+            "Write the normalized calendar JSON (count and integer level) to this path. "
+            "That file can be passed back to --input"
+        ),
+    )
     parser.add_argument("--out", type=Path, help="Directory for tetris-contrib.svg and tetris-contrib-dark.svg")
     parser.add_argument("--light", help="Write the light SVG to this path")
     parser.add_argument("--dark", help="Write the dark SVG to this path")

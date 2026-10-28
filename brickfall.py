@@ -165,7 +165,14 @@ def profile_window(today: date) -> tuple[date, date]:
 
 
 def _parse_day(raw: dict) -> Day:
-    level = raw.get("contributionLevel", "NONE")
+    # GitHub sends contributionLevel. calendar_to_json sends an integer level.
+    # The enum wins when a day carries both, so a fetched calendar stays exact.
+    if "contributionLevel" in raw:
+        level = raw["contributionLevel"]
+    elif "level" in raw:
+        level = raw["level"]
+    else:
+        level = "NONE"
     if isinstance(level, int):
         level_n = level
     else:

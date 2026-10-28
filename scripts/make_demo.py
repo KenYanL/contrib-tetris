@@ -26,9 +26,9 @@ sys.path.insert(0, str(ROOT))
 from brickfall import LEVEL_NAMES, Calendar, Day, calendar_from_days, profile_window  # noqa: E402
 from generate import main as generate_main  # noqa: E402
 
-# Inverse of brickfall.LEVEL_NAMES. generate.py reads contributionLevel
-# (NONE / FIRST_QUARTILE / ...), the enum the GitHub API returns. An integer
-# "level" field is ignored and every day is treated as empty.
+# Inverse of brickfall.LEVEL_NAMES. The demo stores the GitHub API enum
+# (NONE / FIRST_QUARTILE / ...). calendar_to_json writes an integer level
+# instead; the loader accepts that form too.
 _LEVEL_NAME = {value: name for name, value in LEVEL_NAMES.items()}
 
 # Same seed always rebuilds the same calendar and the same SVGs.

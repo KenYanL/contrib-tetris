@@ -26,6 +26,7 @@ from brickfall import (  # noqa: E402
     Calendar,
     Day,
     calendar_from_json,
+    calendar_to_json,
     coverage_errors,
     decompose,
     lands_before,
@@ -305,6 +306,76 @@ class CalendarEdgeTests(unittest.TestCase):
         body = svg.split('<g class="piece"', 1)[1]
         self.assertGreater(body.count('href="#bl2"'), 0)
         self.assertNotIn("<script", svg)
+
+    def test_dump_json_round_trip_keeps_levels(self) -> None:
+        """calendar_to_json writes integer level, and a reload keeps those colors.
+
+        contributionLevel still wins when a day also carries an integer level,
+        which is the shape a fetched GitHub day would have.
+        """
+        start = date(2026, 10, 11)
+        end = date(2026, 10, 17)
+        original = calendar_from_json(
+            _json_calendar(
+                "round",
+                start,
+                end,
+                {
+                    date(2026, 10, 12): (3, 2),
+                    date(2026, 10, 14): (8, 4),
+                },
+            )
+        )
+        payload = calendar_to_json(original)
+        monday = payload["weeks"][0][1]
+        wednesday = payload["weeks"][0][3]
+        self.assertEqual(monday, {"date": "2026-10-12", "count": 3, "level": 2})
+        self.assertEqual(wednesday["level"], 4)
+        self.assertNotIn("contributionLevel", monday)
+
+        restored = calendar_from_json(payload)
+        self.assertEqual(restored.username, original.username)
+        self.assertEqual(restored.start, original.start)
+        self.assertEqual(restored.end, original.end)
+        self.assertEqual(restored.total, 11)
+        self.assertEqual(
+            [(day.date, day.count, day.level) for week in restored.weeks for day in week],
+            [(day.date, day.count, day.level) for week in original.weeks for day in week],
+        )
+        for theme, empty, colored in (("light", "bl0", "bl"), ("dark", "bd0", "bd")):
+            body = render_svg(restored, pieces_for_calendar(restored), theme).split('<g class="piece"', 1)[1]
+            self.assertGreater(body.count(f'href="#{colored}2"'), 0)
+            self.assertGreater(body.count(f'href="#{colored}4"'), 0)
+            self.assertLess(body.count(f'href="#{empty}"'), 7)
+
+        # The API enum wins over a stale integer level. An integer
+        # contributionLevel is still a level, and a date-only day stays empty.
+        mixed = calendar_from_json(
+            {
+                "username": "mixed",
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "weeks": [
+                    [
+                        {
+                            "date": "2026-10-12",
+                            "contributionCount": 9,
+                            "count": 1,
+                            "contributionLevel": "FOURTH_QUARTILE",
+                            "level": 1,
+                        },
+                        {"date": "2026-10-13", "contributionCount": 2, "contributionLevel": 3},
+                        {"date": "2026-10-14"},
+                    ]
+                ],
+            }
+        )
+        self.assertEqual(mixed.weeks[0][1].count, 9)
+        self.assertEqual(mixed.weeks[0][1].level, 4)
+        self.assertEqual(mixed.weeks[0][2].count, 2)
+        self.assertEqual(mixed.weeks[0][2].level, 3)
+        self.assertEqual(mixed.weeks[0][3].count, 0)
+        self.assertEqual(mixed.weeks[0][3].level, 0)
 
 
 class SampleTests(unittest.TestCase):
@@ -682,6 +753,50 @@ class InputValidationTests(unittest.TestCase):
             self.assertEqual(_fall_frames(normal_light), _fall_frames(fast_light))
             self.assertEqual(_fall_frames(normal_dark), _fall_frames(fast_dark))
             self.assertNotEqual(normal_light, fast_light)
+
+    def test_cli_dump_json_reloads_with_the_same_bricks(self) -> None:
+        """A --dump-json file passed back to --input keeps the colored bricks."""
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (3, 2), date(2026, 10, 14): (8, 4)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            dumped = Path(tmp) / "nested" / "calendar.json"
+            first = Path(tmp) / "first"
+            second = Path(tmp) / "second"
+            env = os.environ.copy()
+            proc = _run_generate(
+                ["--input", str(source), "--out", str(first), "--dump-json", str(dumped), "--seed", "0"],
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertTrue(dumped.is_file())
+            saved = json.loads(dumped.read_text(encoding="utf-8"))
+            active = [day for week in saved["weeks"] for day in week if day["count"] > 0]
+            self.assertEqual([day["level"] for day in active], [2, 4])
+            self.assertNotIn("contributionLevel", active[0])
+
+            again = _run_generate(
+                ["--input", str(dumped), "--out", str(second), "--seed", "0"],
+                env=env,
+            )
+            self.assertEqual(again.returncode, 0, again.stderr)
+            for name in ("tetris-contrib.svg", "tetris-contrib-dark.svg"):
+                self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
+            light = (second / "tetris-contrib.svg").read_text(encoding="utf-8")
+            dark = (second / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
+            self.assertIn('href="#bl2"', light)
+            self.assertIn('href="#bl4"', light)
+            self.assertIn('href="#bd2"', dark)
+            self.assertIn('href="#bd4"', dark)
+            self.assertNotIn("#aceebb", dark)
+            self.assertNotIn("#56d364", light)
 
 
 def _fall_frames(svg: str) -> str:

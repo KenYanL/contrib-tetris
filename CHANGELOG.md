@@ -12,6 +12,10 @@ and `v1.2.0` point at the 2026-10-27 release.
 
 - A unit test rebuilds the seeded README demo in a temporary directory and fails when `demo/` drifts from `scripts/make_demo.py`, which now accepts `--out` (default `demo/`) so that check does not overwrite the committed files (2026-10-27).
 
+### Fixed
+
+- Reloading a `--dump-json` calendar keeps each day's contribution level. The loader reads the integer `level` that `calendar_to_json` writes when `contributionLevel` is absent, so those days still paint colored bricks (2026-10-28).
+
 ## [v1.2.0] - 2026-10-27
 
 ### Added
