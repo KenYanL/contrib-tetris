@@ -119,7 +119,7 @@ The schedule is the workflow's cron. The example and this repo both use `41 7 * 
 
 ### How big are the files, and does it install anything?
 
-The action installs nothing. It runs `generate.py` with Python 3.10 or newer from the standard library, which `ubuntu-latest` already has. Each result is pure SVG and CSS (no `<script>`). The pinned sample in `sample/` is 48,956 bytes (light) and 48,959 bytes (dark). `generate.py` prints the byte size of each file as it writes it.
+The action installs nothing. It runs `generate.py` with Python 3.10 or newer from the standard library, which `ubuntu-latest` already has. Each result is pure SVG and CSS (no `<script>`). The pinned sample in `sample/` is 45,354 bytes (light) and 45,357 bytes (dark). `generate.py` prints the byte size of each file as it writes it.
 
 ### What happens with an empty or very small calendar?
 

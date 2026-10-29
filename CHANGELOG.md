@@ -15,6 +15,7 @@ and `v1.2.0` point at the 2026-10-27 release.
 ### Fixed
 
 - Reloading a `--dump-json` calendar keeps each day's contribution level. The loader reads the integer `level` that `calendar_to_json` writes when `contributionLevel` is absent, so those days still paint colored bricks (2026-10-28).
+- The pinned sample SVGs match `sample/contributions.json` again. They were drawn while an integer `level` was ignored, so every cell was an empty brick while the caption still said 168 contributions. A test fails when those files drift from the current renderer (2026-10-29).
 
 ## [v1.2.0] - 2026-10-27
 

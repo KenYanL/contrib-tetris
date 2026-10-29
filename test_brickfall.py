@@ -425,6 +425,44 @@ class SampleTests(unittest.TestCase):
             self.assertIn("KenYanL", svg)
             self.assertLess(len(svg.encode()), 1_500_000)
 
+    def test_pinned_sample_svgs_match_the_generator(self) -> None:
+        """The committed sample drawings are a render of the pinned calendar.
+
+        Those SVGs were written when an integer level was ignored, so the
+        caption said 168 contributions while every cell was an empty brick.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "generate.py"),
+                    "--input",
+                    str(SAMPLE),
+                    "--out",
+                    tmp,
+                    "--seed",
+                    "0",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            for name in ("tetris-contrib.svg", "tetris-contrib-dark.svg"):
+                rebuilt = Path(tmp) / name
+                original = ROOT / "sample" / name
+                self.assertTrue(original.is_file(), name)
+                if rebuilt.read_bytes() != original.read_bytes():
+                    self.fail(
+                        f"sample/{name} does not match generate.py. "
+                        "Rerun generate.py --input sample/contributions.json --out sample."
+                    )
+            light = (ROOT / "sample" / "tetris-contrib.svg").read_text(encoding="utf-8")
+            body = light.split('<g class="piece"', 1)[1]
+            colored = sum(body.count(f'href="#bl{level}"') for level in range(1, 5))
+            self.assertGreater(colored, 0)
+            self.assertIn(">168 contributions in the last year<", light)
+
 
 class DemoTests(unittest.TestCase):
     def test_committed_demo_matches_seeded_rebuild(self) -> None:
