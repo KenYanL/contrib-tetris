@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from brickfall import (  # noqa: E402
+    CalendarParseError,
     calendar_from_json,
     calendar_to_json,
     coverage_errors,
@@ -255,8 +256,22 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.input:
             username = checked_username(args.username, required=False)
-            payload = json.loads(args.input.read_text(encoding="utf-8"))
-            if username is not None:
+            example = "Pass a contribution calendar JSON file, for example sample/contributions.json."
+            try:
+                raw_text = args.input.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                raise InputError(f"--input {args.input} was not found. {example}") from None
+            except IsADirectoryError:
+                raise InputError(f"--input {args.input} is a directory. {example}") from None
+            except UnicodeDecodeError:
+                raise InputError(f"--input {args.input} is not UTF-8 text. {example}") from None
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise InputError(
+                    f"--input {args.input} is not valid JSON ({exc.msg} on line {exc.lineno}). {example}"
+                ) from None
+            if isinstance(payload, dict) and username is not None:
                 payload = {**payload, "username": username}
             calendar = calendar_from_json(payload)
         else:
@@ -274,6 +289,13 @@ def main(argv: list[str] | None = None) -> int:
             calendar = fetch_calendar(username, token)
     except InputError as exc:
         return fail(str(exc))
+    except CalendarParseError as exc:
+        if args.input is not None:
+            return fail(
+                f"--input {args.input} is not a usable contribution calendar. {exc} "
+                "Pass a file like sample/contributions.json."
+            )
+        return fail(f"the contribution calendar is not usable. {exc}")
 
     pieces = pieces_for_calendar(calendar, seed=seed)
     errors = coverage_errors(pieces, 7, calendar.columns)

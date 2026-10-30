@@ -24,6 +24,7 @@ from brickfall import (  # noqa: E402
     SMALL_PIECES,
     TETROMINOES,
     Calendar,
+    CalendarParseError,
     Day,
     calendar_from_json,
     calendar_to_json,
@@ -376,6 +377,63 @@ class CalendarEdgeTests(unittest.TestCase):
         self.assertEqual(mixed.weeks[0][2].level, 3)
         self.assertEqual(mixed.weeks[0][3].count, 0)
         self.assertEqual(mixed.weeks[0][3].level, 0)
+
+    def test_unusable_calendar_json_names_the_bad_field(self) -> None:
+        """Levels outside 0 to 4, and other bad days, fail while loading.
+
+        A level of -1 used to load. The brick href pointed at a missing symbol,
+        and a joint between two such days borrowed the level 4 color.
+        """
+        start = "2026-10-11"
+        end = "2026-10-17"
+
+        def day(**extra: object) -> dict:
+            body: dict = {"date": "2026-10-12", "count": 1, "level": 1}
+            body.update(extra)
+            return {"username": "bad", "start": start, "end": end, "weeks": [[body]]}
+
+        rejected = (
+            (day(level=-1), ("2026-10-12", "level", "0 to 4", "FIRST_QUARTILE")),
+            (day(level=5), ("2026-10-12", "level", "0 to 4")),
+            (day(level=True), ("2026-10-12", "level", "True")),
+            (day(contributionLevel="BOGUS"), ("contributionLevel", "BOGUS", "FOURTH_QUARTILE")),
+            (day(contributionLevel="none"), ("contributionLevel", "NONE")),
+            (day(count=-3), ("2026-10-12", "count", "-3")),
+            (day(count=1.5), ("count", "1.5")),
+            (day(count=True), ("count", "True")),
+            (day(date="2026-13-40"), ("2026-13-40", "ISO date")),
+            (day(date=""), ("ISO date",)),
+            (day(date=None), ("date", "ISO date")),
+            ({"username": "bad", "end": end, "weeks": []}, ("start", "missing")),
+            ({"username": "bad", "start": start, "end": end}, ("weeks", "missing")),
+            ({"username": "bad", "start": end, "end": start, "weeks": []}, ("before", "2026-10-17")),
+            ([], ("JSON object",)),
+            ({"start": start, "end": end, "weeks": ["nope"]}, ("week 1",)),
+            ({"start": start, "end": end, "weeks": [["2026-10-12"]]}, ("object", "date")),
+        )
+        for payload, needles in rejected:
+            with self.assertRaises(CalendarParseError) as caught:
+                calendar_from_json(payload)
+            message = str(caught.exception)
+            for needle in needles:
+                self.assertIn(needle, message, message)
+
+        monday = calendar_from_json(day(count="4", level="2"))
+        self.assertEqual(monday.weeks[0][1].date, date(2026, 10, 12))
+        self.assertEqual(monday.weeks[0][1].count, 4)
+        self.assertEqual(monday.weeks[0][1].level, 2)
+        self.assertEqual(monday.total, 4)
+
+        enum_wins = calendar_from_json(
+            day(level=1, contributionLevel=" FOURTH_QUARTILE ", contributionCount="8")
+        )
+        self.assertEqual(enum_wins.weeks[0][1].level, 4)
+        self.assertEqual(enum_wins.weeks[0][1].count, 8)
+
+        for level in (0, 4):
+            bounded = calendar_from_json(day(level=level, count=level))
+            self.assertEqual(bounded.weeks[0][1].level, level)
+            self.assertEqual(bounded.weeks[0][1].count, level)
 
 
 class SampleTests(unittest.TestCase):
@@ -835,6 +893,96 @@ class InputValidationTests(unittest.TestCase):
             self.assertIn('href="#bd4"', dark)
             self.assertNotIn("#aceebb", dark)
             self.assertNotIn("#56d364", light)
+
+    def test_cli_rejects_unusable_calendar_before_writing(self) -> None:
+        """A bad --input file exits before dump or SVG output, with no traceback.
+
+        Level -1 used to exit 0 and write an SVG whose brick href was missing.
+        """
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = os.environ.copy()
+            out = root / "dist"
+            dumped = root / "nested" / "calendar.json"
+            missing = root / "missing.json"
+            missing_run = _run_generate(
+                ["--input", str(missing), "--out", str(out), "--dump-json", str(dumped)],
+                env=env,
+            )
+            self.assertEqual(missing_run.returncode, 1)
+            self.assertIn("contrib-tetris:", missing_run.stderr)
+            self.assertIn("--input", missing_run.stderr)
+            self.assertIn(str(missing), missing_run.stderr)
+            self.assertIn("was not found", missing_run.stderr)
+            self.assertIn("sample/contributions.json", missing_run.stderr)
+            self.assertNotIn("Traceback", missing_run.stderr)
+            self.assertFalse(out.exists())
+            self.assertFalse(dumped.exists())
+
+            directory_run = _run_generate(
+                ["--input", str(root), "--out", str(out)],
+                env=env,
+            )
+            self.assertEqual(directory_run.returncode, 1)
+            self.assertIn("is a directory", directory_run.stderr)
+            self.assertIn("sample/contributions.json", directory_run.stderr)
+            self.assertNotIn("Traceback", directory_run.stderr)
+            self.assertFalse(out.exists())
+
+            binary = root / "calendar.bin"
+            binary.write_bytes(b"\xff")
+            binary_run = _run_generate(
+                ["--input", str(binary), "--out", str(out)],
+                env=env,
+            )
+            self.assertEqual(binary_run.returncode, 1)
+            self.assertIn("not UTF-8", binary_run.stderr)
+            self.assertNotIn("Traceback", binary_run.stderr)
+            self.assertFalse(out.exists())
+
+            broken = root / "broken.json"
+            broken.write_text("{", encoding="utf-8")
+            broken_run = _run_generate(
+                ["--input", str(broken), "--out", str(out), "--dump-json", str(dumped)],
+                env=env,
+            )
+            self.assertEqual(broken_run.returncode, 1)
+            self.assertIn("not valid JSON", broken_run.stderr)
+            self.assertIn("line 1", broken_run.stderr)
+            self.assertIn("sample/contributions.json", broken_run.stderr)
+            self.assertNotIn("Traceback", broken_run.stderr)
+            self.assertFalse(out.exists())
+            self.assertFalse(dumped.exists())
+
+            source = root / "level.json"
+            source.write_text(
+                json.dumps(
+                    {
+                        "username": "bad",
+                        "start": "2026-10-11",
+                        "end": "2026-10-17",
+                        "weeks": [[{"date": "2026-10-12", "count": 3, "level": -1}]],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            level_run = _run_generate(
+                ["--input", str(source), "--out", str(out), "--dump-json", str(dumped), "--seed", "0"],
+                env=env,
+            )
+            self.assertEqual(level_run.returncode, 1)
+            self.assertIn("--input", level_run.stderr)
+            self.assertIn(str(source), level_run.stderr)
+            self.assertIn("2026-10-12", level_run.stderr)
+            self.assertIn("0 to 4", level_run.stderr)
+            self.assertIn("FIRST_QUARTILE", level_run.stderr)
+            self.assertIn("sample/contributions.json", level_run.stderr)
+            self.assertNotIn("Traceback", level_run.stderr)
+            self.assertFalse(out.exists())
+            self.assertFalse(dumped.exists())
+            self.assertFalse((out / "tetris-contrib.svg").exists())
 
 
 def _fall_frames(svg: str) -> str:

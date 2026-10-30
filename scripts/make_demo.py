@@ -127,8 +127,8 @@ def calendar_payload(calendar: Calendar) -> dict:
     """Calendar JSON in the shape ``generate.py --input`` parses.
 
     Days use ``contributionCount`` and ``contributionLevel`` so the loader
-    keeps the quartile colors. ``calendar_to_json`` writes ``count`` and
-    integer ``level``, and the level is dropped on read.
+    keeps the quartile colors. ``calendar_to_json`` writes ``count`` and an
+    integer ``level``; the loader reads that integer when the enum is absent.
     """
     return {
         "username": calendar.username,

@@ -164,36 +164,127 @@ def profile_window(today: date) -> tuple[date, date]:
     return start, end
 
 
-def _parse_day(raw: dict) -> Day:
-    # GitHub sends contributionLevel. calendar_to_json sends an integer level.
-    # The enum wins when a day carries both, so a fetched calendar stays exact.
+class CalendarParseError(ValueError):
+    """A contribution calendar has a field this renderer cannot draw."""
+
+
+_LEVEL_HINT = (
+    "Use 0, 1, 2, 3, or 4, or NONE, FIRST_QUARTILE, SECOND_QUARTILE, "
+    "THIRD_QUARTILE, FOURTH_QUARTILE."
+)
+
+
+def _parse_day_date(raw: dict) -> date:
+    if "date" not in raw:
+        raise CalendarParseError("a contribution day is missing date. Use an ISO date like 2026-10-12.")
+    value = raw["date"]
+    if not isinstance(value, str) or value.strip() == "":
+        raise CalendarParseError(
+            f"a contribution day has date {value!r}, which is not an ISO date. Use a date like 2026-10-12."
+        )
+    try:
+        # GitHub dates are YYYY-MM-DD. A datetime prefix still counts as that day.
+        return date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        raise CalendarParseError(
+            f"a contribution day has date {value!r}, which is not an ISO date. Use a date like 2026-10-12."
+        ) from None
+
+
+def _parse_count(raw: dict, day: date) -> int:
+    if "contributionCount" in raw:
+        value: object = raw["contributionCount"]
+        label = "contributionCount"
+    elif "count" in raw:
+        value = raw["count"]
+        label = "count"
+    else:
+        return 0
+    original = value
+    if isinstance(value, str):
+        try:
+            value = int(value.strip())
+        except ValueError:
+            value = original
+    # bool is an int subclass; True would otherwise become one contribution.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CalendarParseError(
+            f"day {day.isoformat()} has {label} {original!r}, which is not a non-negative integer."
+        )
+    return value
+
+
+def _parse_level(raw: dict, day: date) -> int:
+    """Read a day level. GitHub's contributionLevel wins over an integer level.
+
+    Only 0 through 4 are drawable. Other values used to write an SVG that
+    referenced a missing brick, or, for a negative level, borrowed another
+    quartile's color for the joint.
+    """
     if "contributionLevel" in raw:
-        level = raw["contributionLevel"]
+        level: object = raw["contributionLevel"]
+        label = "contributionLevel"
     elif "level" in raw:
         level = raw["level"]
+        label = "level"
     else:
-        level = "NONE"
-    if isinstance(level, int):
-        level_n = level
-    else:
-        level_n = LEVEL_NAMES[str(level)]
-    return Day(
-        date=date.fromisoformat(str(raw["date"])[:10]),
-        count=int(raw.get("contributionCount", raw.get("count", 0))),
-        level=int(level_n),
-    )
+        return 0
+    shown = level
+    if isinstance(level, str):
+        text = level.strip()
+        if text in LEVEL_NAMES:
+            return LEVEL_NAMES[text]
+        try:
+            level = int(text)
+        except ValueError:
+            level = shown
+    if isinstance(level, bool) or not isinstance(level, int) or not 0 <= level <= 4:
+        raise CalendarParseError(
+            f"day {day.isoformat()} has {label} {shown!r}, which is not a contribution level from 0 to 4. "
+            f"{_LEVEL_HINT}"
+        )
+    return level
+
+
+def _parse_day(raw: dict) -> Day:
+    if not isinstance(raw, dict):
+        raise CalendarParseError(
+            "each contribution day must be an object with a date, "
+            'for example {"date": "2026-10-12", "count": 0, "level": 0}.'
+        )
+    parsed = _parse_day_date(raw)
+    return Day(date=parsed, count=_parse_count(raw, parsed), level=_parse_level(raw, parsed))
+
+
+def _parse_window_date(payload: dict, key: str) -> date:
+    if key not in payload:
+        raise CalendarParseError(f"{key} is missing. Use an ISO date like 2026-10-12.")
+    value = payload[key]
+    if not isinstance(value, str) or value.strip() == "":
+        raise CalendarParseError(
+            f"{key} is {value!r}, which is not an ISO date. Use a date like 2026-10-12."
+        )
+    try:
+        return date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        raise CalendarParseError(
+            f"{key} is {value!r}, which is not an ISO date. Use a date like 2026-10-12."
+        ) from None
 
 
 def calendar_from_days(username: str, start: date, end: date, days: Iterable[Day]) -> Calendar:
     if end < start:
-        raise ValueError(f"window {start}..{end} is not a whole number of weeks")
+        raise ValueError(
+            f"end {end.isoformat()} is before start {start.isoformat()}. "
+            "Use a window that starts on or before it ends, for example 2026-10-12 through 2026-10-17."
+        )
     # A partial first week, and a 366-day leap year, are not Sunday-to-Saturday.
     # Pad so row 0 stays Sunday; missing days are empty contributions.
     start = start - timedelta(days=(start.weekday() + 1) % 7)
     end = end + timedelta(days=(5 - end.weekday()) % 7)
     span = (end - start).days + 1
     if span % 7 != 0 or span < 7:
-        raise ValueError(f"window {start}..{end} is not a whole number of weeks")
+        raise ValueError(f"window {start.isoformat()}..{end.isoformat()} is not a whole number of weeks.")
     columns = span // 7
     grid: list[list[Day | None]] = [[None] * ROWS for _ in range(columns)]
     for day in days:
@@ -214,14 +305,26 @@ def calendar_from_days(username: str, start: date, end: date, days: Iterable[Day
     return Calendar(username=username, start=start, end=end, weeks=tuple(weeks))
 
 
-def calendar_from_json(payload: dict) -> Calendar:
-    start = date.fromisoformat(payload["start"])
-    end = date.fromisoformat(payload["end"])
+def calendar_from_json(payload: object) -> Calendar:
+    if not isinstance(payload, dict):
+        raise CalendarParseError("the calendar must be a JSON object with start, end, and weeks.")
+    start = _parse_window_date(payload, "start")
+    end = _parse_window_date(payload, "end")
+    if "weeks" not in payload:
+        raise CalendarParseError("weeks is missing. Use a list of weeks, or an empty list.")
+    weeks = payload["weeks"]
+    if not isinstance(weeks, list):
+        raise CalendarParseError("weeks must be a list of weeks, or an empty list.")
     days: list[Day] = []
-    for week in payload["weeks"]:
+    for index, week in enumerate(weeks, start=1):
+        if not isinstance(week, list):
+            raise CalendarParseError(f"week {index} must be a list of days.")
         for raw in week:
             days.append(_parse_day(raw))
-    return calendar_from_days(str(payload.get("username", "")), start, end, days)
+    try:
+        return calendar_from_days(str(payload.get("username", "")), start, end, days)
+    except ValueError as exc:
+        raise CalendarParseError(str(exc)) from None
 
 
 def calendar_to_json(cal: Calendar) -> dict:
