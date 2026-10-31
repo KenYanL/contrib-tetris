@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import generate  # noqa: E402
 from generate import (  # noqa: E402
     InputError,
     checked_username,
@@ -26,10 +31,13 @@ from brickfall import (  # noqa: E402
     Calendar,
     CalendarParseError,
     Day,
+    GraphQLError,
+    _graphql,
     calendar_from_json,
     calendar_to_json,
     coverage_errors,
     decompose,
+    fetch_calendar,
     lands_before,
     make_timeline,
     match_shape,
@@ -983,6 +991,81 @@ class InputValidationTests(unittest.TestCase):
             self.assertFalse(out.exists())
             self.assertFalse(dumped.exists())
             self.assertFalse((out / "tetris-contrib.svg").exists())
+
+
+class ApiFailureTests(unittest.TestCase):
+    def test_fetch_names_a_missing_user_and_an_empty_calendar(self) -> None:
+        """These are the messages the README says the action fails with."""
+        with patch("brickfall._graphql", return_value={"user": None}):
+            with self.assertRaises(GraphQLError) as missing:
+                fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(str(missing.exception), "GitHub user 'octocat' was not found")
+
+        empty = {
+            "user": {
+                "contributionsCollection": {
+                    "contributionCalendar": {"weeks": []},
+                }
+            }
+        }
+        with patch("brickfall._graphql", return_value=empty):
+            with self.assertRaises(GraphQLError) as quiet:
+                fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(str(quiet.exception), "no contribution days returned for octocat")
+
+    def test_http_and_network_errors_are_graphql_errors(self) -> None:
+        http_error = urllib.error.HTTPError(
+            url="https://api.github.com/graphql",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=io.BytesIO(b"bad credentials"),
+        )
+        with patch("urllib.request.urlopen", side_effect=http_error):
+            with self.assertRaises(GraphQLError) as http:
+                _graphql("token", "query { viewer { login } }", {})
+        self.assertIn("HTTP 401", str(http.exception))
+        self.assertIn("bad credentials", str(http.exception))
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timed out")):
+            with self.assertRaises(GraphQLError) as network:
+                _graphql("token", "query { viewer { login } }", {})
+        self.assertIn("timed out", str(network.exception))
+
+    def test_cli_prints_graphql_errors_and_writes_nothing(self) -> None:
+        """API failures used to escape as a traceback after inputs were accepted."""
+        messages = (
+            "GitHub user 'octocat' was not found",
+            "no contribution days returned for octocat",
+            "GitHub GraphQL HTTP 401: bad credentials",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            light = Path(tmp) / "nested" / "light.svg"
+            dark = Path(tmp) / "nested" / "dark.svg"
+            for message in messages:
+                stderr = io.StringIO()
+                with patch("generate.fetch_calendar", side_effect=GraphQLError(message)):
+                    with contextlib.redirect_stderr(stderr):
+                        code = generate.main(
+                            [
+                                "--username",
+                                "octocat",
+                                "--token",
+                                "dummy",
+                                "--light",
+                                str(light),
+                                "--dark",
+                                str(dark),
+                            ]
+                        )
+                self.assertEqual(code, 1, message)
+                output = stderr.getvalue()
+                self.assertIn("contrib-tetris:", output)
+                self.assertIn(message, output)
+                self.assertNotIn("Traceback", output)
+                self.assertFalse(light.exists(), message)
+                self.assertFalse(dark.exists(), message)
+                self.assertFalse(light.parent.exists(), message)
 
 
 def _fall_frames(svg: str) -> str:

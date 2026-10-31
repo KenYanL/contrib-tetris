@@ -14,6 +14,7 @@ and `v1.2.0` point at the 2026-10-27 release.
 
 ### Fixed
 
+- A GitHub API failure exits with that error and writes no SVG. An unknown login (`GitHub user '<login>' was not found`), a calendar with no days, and an HTTP or network failure were already raised, but they escaped as a Python traceback (2026-10-31).
 - Reloading a `--dump-json` calendar keeps each day's contribution level. The loader reads the integer `level` that `calendar_to_json` writes when `contributionLevel` is absent, so those days still paint colored bricks (2026-10-28).
 - The pinned sample SVGs match `sample/contributions.json` again. They were drawn while an integer `level` was ignored, so every cell was an empty brick while the caption still said 168 contributions. A test fails when those files drift from the current renderer (2026-10-29).
 - A contribution level outside 0 to 4 is rejected when the calendar is loaded, so the SVG cannot point at a missing brick or paint the wrong quartile. An `--input` file that is missing, not JSON, or otherwise unusable fails with a message that names the file, and no SVG is written (2026-10-30).

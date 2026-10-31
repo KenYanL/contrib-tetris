@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from brickfall import (  # noqa: E402
     CalendarParseError,
+    GraphQLError,
     calendar_from_json,
     calendar_to_json,
     coverage_errors,
@@ -296,6 +297,11 @@ def main(argv: list[str] | None = None) -> int:
                 "Pass a file like sample/contributions.json."
             )
         return fail(f"the contribution calendar is not usable. {exc}")
+    except GraphQLError as exc:
+        # Unknown logins, empty calendars, and HTTP or network failures are
+        # already GraphQLError. Leave them as that message so the action step
+        # does not dump a traceback, and do not write an SVG.
+        return fail(str(exc))
 
     pieces = pieces_for_calendar(calendar, seed=seed)
     errors = coverage_errors(pieces, 7, calendar.columns)
