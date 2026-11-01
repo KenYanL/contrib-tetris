@@ -10,6 +10,7 @@ and `v1.2.0` point at the 2026-10-27 release.
 
 ### Added
 
+- Optional `palette` input (`--palette` on the CLI). `default` is the usual green contribution graph. `halloween` uses GitHub Primer's Halloween colors (`--contribution-halloween-bgColor-1` through `-4` from `@primer/primitives` 11.10.0) on both the light and dark SVGs. `auto` uses those colors only on 31 October (UTC) and the green graph every other day. Omit the input to keep the green graph (2026-11-01).
 - A unit test rebuilds the seeded README demo in a temporary directory and fails when `demo/` drifts from `scripts/make_demo.py`, which now accepts `--out` (default `demo/`) so that check does not overwrite the committed files (2026-10-27).
 
 ### Fixed

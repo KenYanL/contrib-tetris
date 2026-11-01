@@ -45,6 +45,14 @@ inputs:
       value is rejected; omit the input to keep the normal pace.
     required: false
     default: "1.0"
+  palette:
+    description: >-
+      Contribution colors for both SVGs. default is the usual green graph.
+      halloween uses GitHub's Halloween graph colors. auto uses halloween
+      only on 31 October (UTC) and default every other day. Omit the input
+      to keep the usual green graph. An empty value is rejected.
+    required: false
+    default: "default"
 
 outputs:
   svg_light_path:
@@ -67,6 +75,7 @@ runs:
         TETRIS_DARK: ${{ inputs.svg_dark_path }}
         TETRIS_SEED: ${{ inputs.seed }}
         TETRIS_SPEED: ${{ inputs.speed }}
+        TETRIS_PALETTE: ${{ inputs.palette }}
         # generate.py keeps SVG paths inside the workspace when this is 1.
         TETRIS_REQUIRE_RELATIVE: "1"
       run: |
@@ -90,7 +99,8 @@ runs:
           --light "$TETRIS_LIGHT" \
           --dark "$TETRIS_DARK" \
           --seed "$seed" \
-          --speed "${TETRIS_SPEED-1.0}"
+          --speed "${TETRIS_SPEED-1.0}" \
+          --palette "${TETRIS_PALETTE-default}"
         {
           echo "svg_light_path<<EOF"
           echo "$TETRIS_LIGHT"

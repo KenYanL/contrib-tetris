@@ -34,6 +34,30 @@ PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+# --contribution-halloween-bgColor-1..4 from @primer/primitives 11.10.0
+# (dist/css/functional/themes/light.css and dark.css). Level 0 keeps
+# --contribution-default-bgColor-0: Primer's Halloween tokens start at level 1.
+# Text and the cell border match the default theme.
+HALLOWEEN_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#f0db3d", "#ffd642", "#f68c41", "#1f2328"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#fac68f", "#c46212", "#984b10", "#e3d04f"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
+# Concrete palettes render_svg can paint. ``auto`` is resolved before this.
+PALETTE_TABLES: dict[str, dict[str, dict[str, object]]] = {
+    "default": PALETTES,
+    "halloween": HALLOWEEN_PALETTES,
+}
+PALETTE_NAMES = ("default", "halloween", "auto")
+
 LEVEL_NAMES = {
     "NONE": 0,
     "FIRST_QUARTILE": 1,
@@ -41,6 +65,23 @@ LEVEL_NAMES = {
     "THIRD_QUARTILE": 3,
     "FOURTH_QUARTILE": 4,
 }
+
+
+def resolve_palette(name: str, today: date) -> str:
+    """Return the concrete palette for ``name`` on ``today``.
+
+    ``default`` and ``halloween`` are returned as given. ``auto`` is
+    ``halloween`` on 31 October and ``default`` on every other day.
+    ``today`` is the calendar day to test. This does not read the clock;
+    pass the current UTC date when the caller means now.
+    """
+    if name == "auto":
+        if today.month == 10 and today.day == 31:
+            return "halloween"
+        return "default"
+    if name not in PALETTE_TABLES:
+        raise ValueError(f"unknown palette {name!r}")
+    return name
 
 CELL = 11
 GAP = 3
@@ -856,11 +897,21 @@ def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
     )
 
 
-def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str, *, speed: float = 1.0) -> str:
-    if theme not in PALETTES:
+def render_svg(
+    cal: Calendar,
+    pieces: Sequence[Piece],
+    theme: str,
+    *,
+    speed: float = 1.0,
+    palette: str = "default",
+) -> str:
+    if palette not in PALETTE_TABLES:
+        raise ValueError(f"unknown palette {palette!r}")
+    themes = PALETTE_TABLES[palette]
+    if theme not in themes:
         raise ValueError(f"unknown theme {theme!r}")
-    palette = PALETTES[theme]
-    text = str(palette["text"])
+    chosen = themes[theme]
+    text = str(chosen["text"])
     columns = cal.columns
     origin_x = 34
     origin_y = 22
@@ -873,14 +924,14 @@ def render_svg(cal: Calendar, pieces: Sequence[Piece], theme: str, *, speed: flo
 
     defs = []
     for level in range(5):
-        defs.append(f'<g id="b{theme[0]}{level}">{_brick(level, palette)}</g>')
+        defs.append(f'<g id="b{theme[0]}{level}">{_brick(level, chosen)}</g>')
 
     piece_markup: list[str] = []
     counts: dict[str, int] = {}
     for index, piece in enumerate(ordered):
         counts[piece.name] = counts.get(piece.name, 0) + 1
         delay = _fmt(_at_speed(timeline.delays[index], speed))
-        joints = _joints(piece, levels, origin_x, origin_y, palette)
+        joints = _joints(piece, levels, origin_x, origin_y, chosen)
         cells = []
         for row, col in piece.cells:
             level = levels[row][col]

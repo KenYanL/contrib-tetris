@@ -6,6 +6,8 @@ Examples:
   python3 generate.py --input sample/contributions.json --out dist
   python3 generate.py --username KenYanL --token "$GITHUB_TOKEN" \\
       --light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg --seed 1
+  python3 generate.py --input sample/contributions.json --out dist --palette halloween
+  python3 generate.py --input sample/contributions.json --out dist --palette auto
 """
 
 from __future__ import annotations
@@ -16,11 +18,13 @@ import math
 import os
 import re
 import sys
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from brickfall import (  # noqa: E402
+    PALETTE_NAMES,
     CalendarParseError,
     GraphQLError,
     calendar_from_json,
@@ -29,6 +33,7 @@ from brickfall import (  # noqa: E402
     fetch_calendar,
     pieces_for_calendar,
     render_svg,
+    resolve_palette,
 )
 
 # Inclusive. 0 is the stable pack; any other value in range only reorders equal choices.
@@ -74,6 +79,24 @@ def parse_seed(raw: object) -> int:
             f"seed (--seed) is {value}, which is outside {SEED_MIN} to {SEED_MAX}. "
             "Use 0 for the stable pack, or another integer in that range."
         )
+    return value
+
+
+def parse_palette(raw: object) -> str:
+    """Return a palette name, or raise InputError naming palette.
+
+    ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
+    colors on both SVGs. ``auto`` uses those colors only on 31 October (UTC).
+    """
+    hint = (
+        "Use default for the usual green graph, halloween for GitHub's Halloween "
+        "colors, or auto to use those colors only on 31 October (UTC)."
+    )
+    if not isinstance(raw, str):
+        raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
+    value = raw.strip().lower()
+    if value not in PALETTE_NAMES:
+        raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
     return value
 
 
@@ -177,7 +200,7 @@ def _checked_token(token: str | None) -> str:
     return token
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render a Tetris-style contribution calendar SVG.")
     parser.add_argument("--username", help="GitHub login whose calendar should be drawn")
     parser.add_argument("--token", help="GitHub token with access to the contribution calendar. Defaults to $GITHUB_TOKEN")
@@ -210,12 +233,25 @@ def main(argv: list[str] | None = None) -> int:
             "The bricks and the resting calendar stay the same"
         ),
     )
+    parser.add_argument(
+        "--palette",
+        default="default",
+        help=(
+            "Contribution colors for both the light and dark SVGs. "
+            "default is the usual green graph. "
+            "halloween uses GitHub's Halloween graph colors. "
+            "auto uses halloween only on 31 October (UTC) and default every other day"
+        ),
+    )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
     args = parser.parse_args(argv)
 
     try:
         seed = parse_seed(args.seed)
         speed = parse_speed(args.speed)
+        palette_name = parse_palette(args.palette)
+        day = today if today is not None else datetime.now(timezone.utc).date()
+        palette = resolve_palette(palette_name, day)
         relative = _relative_paths_required()
         if args.light is not None or args.dark is not None:
             if args.light is None or args.dark is None:
@@ -287,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise InputError(
                     f"github_user_name (--username) is empty. Set it to {_USERNAME_HINT}."
                 )
-            calendar = fetch_calendar(username, token)
+            calendar = fetch_calendar(username, token, today=day)
     except InputError as exc:
         return fail(str(exc))
     except CalendarParseError as exc:
@@ -315,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for theme, path in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        svg = render_svg(calendar, pieces, theme, speed=speed)
+        svg = render_svg(calendar, pieces, theme, speed=speed, palette=palette)
         path.write_text(svg, encoding="utf-8")
         print(f"{path} {len(svg.encode())} bytes")
 
