@@ -197,12 +197,28 @@ def profile_window(today: date) -> tuple[date, date]:
     """Sunday-start weeks covering the profile graph for ``today``.
 
     GitHub draws the week that contains the calendar date one year ago,
-    through the Saturday of the current week.
+    through the Saturday of the current week. That span is a few days
+    longer than one year; see ``range_exceeds_one_year``.
     """
     ago = years_ago(today)
     start = ago - timedelta(days=(ago.weekday() + 1) % 7)
     end = today + timedelta(days=(5 - today.weekday()) % 7)
     return start, end
+
+
+def range_exceeds_one_year(start: date, end: date) -> bool:
+    """Whether ``contributionsCollection(from, to)`` is past GitHub's limit.
+
+    ``from`` is ``start`` at 00:00:00Z and ``to`` is ``end`` at 23:59:59Z.
+    A range that reaches the anniversary of ``start`` is already past one
+    year, because ``to`` is the end of that day. 29 February clamps to
+    28 February, same as ``years_ago``.
+    """
+    try:
+        anniversary = start.replace(year=start.year + 1)
+    except ValueError:
+        anniversary = start.replace(year=start.year + 1, day=28)
+    return end >= anniversary
 
 
 class CalendarParseError(ValueError):
@@ -419,19 +435,27 @@ def fetch_calendar(username: str, token: str, today: date | None = None) -> Cale
     """Fetch the profile contribution window for ``username``."""
     today = today or datetime.now(timezone.utc).date()
     start, end = profile_window(today)
-    variables = {
-        "login": username,
-        "from": f"{start.isoformat()}T00:00:00Z",
-        "to": f"{end.isoformat()}T23:59:59Z",
-    }
-    try:
-        data = _graphql(token, QUERY, variables)
-    except GraphQLError as exc:
-        if "year" not in str(exc).lower():
-            raise
-        # The profile window can run a few days past one year. The default
-        # collection is the same graph the profile draws.
+    if range_exceeds_one_year(start, end):
+        # The profile grid opens on the Sunday of the week one year ago and
+        # closes on Saturday of this week, so it is always a few days over
+        # a year. GitHub rejects that range. The default collection is the
+        # graph the profile draws; ask for it instead of sending a query
+        # that fails on every run.
         data = _graphql(token, QUERY_DEFAULT, {"login": username})
+    else:
+        variables = {
+            "login": username,
+            "from": f"{start.isoformat()}T00:00:00Z",
+            "to": f"{end.isoformat()}T23:59:59Z",
+        }
+        try:
+            data = _graphql(token, QUERY, variables)
+        except GraphQLError as exc:
+            if "year" not in str(exc).lower():
+                raise
+            # A shorter range can still land on the anniversary. The default
+            # collection is the same graph the profile draws.
+            data = _graphql(token, QUERY_DEFAULT, {"login": username})
     user = data.get("user")
     if not user:
         raise GraphQLError(f"GitHub user {username!r} was not found")

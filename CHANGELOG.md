@@ -9,6 +9,10 @@ release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fetching a contribution calendar no longer sends a ranged GraphQL query that GitHub rejects on every run. The profile window runs from the Sunday of the week one year ago through Saturday of this week, which is always longer than one year, so that query failed and the action retried the default collection. It now asks for the default collection directly. A shorter range that GitHub still rejects for spanning a year falls back the same way (2026-11-01).
+
 ## [v1.3.0] - 2026-11-01
 
 ### Added
