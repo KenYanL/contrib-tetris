@@ -20,12 +20,15 @@ import generate  # noqa: E402
 from generate import (  # noqa: E402
     InputError,
     checked_username,
+    parse_palette,
     parse_seed,
     parse_speed,
     validate_output_path,
 )
 from brickfall import (  # noqa: E402
+    HALLOWEEN_PALETTES,
     ORIENTATIONS,
+    PALETTES,
     SMALL_PIECES,
     TETROMINOES,
     Calendar,
@@ -44,6 +47,7 @@ from brickfall import (  # noqa: E402
     pieces_for_calendar,
     profile_window,
     render_svg,
+    resolve_palette,
     rotations,
     stack_order,
 )
@@ -1066,6 +1070,193 @@ class ApiFailureTests(unittest.TestCase):
                 self.assertFalse(light.exists(), message)
                 self.assertFalse(dark.exists(), message)
                 self.assertFalse(light.parent.exists(), message)
+
+
+class PaletteTests(unittest.TestCase):
+    """Halloween colors, and the UTC date switch for palette auto.
+
+    The date is passed in. These tests do not read the clock.
+    """
+
+    def test_parse_palette_names(self) -> None:
+        self.assertEqual(parse_palette("default"), "default")
+        self.assertEqual(parse_palette(" Halloween "), "halloween")
+        self.assertEqual(parse_palette("AUTO"), "auto")
+        for bad in ("", " ", "green", "seasonal", "winter", "none", "0", None, 1, True):
+            with self.assertRaises(InputError) as caught:
+                parse_palette(bad)
+            message = str(caught.exception)
+            self.assertIn("palette", message)
+            self.assertIn("halloween", message)
+            self.assertIn("31 October", message)
+
+    def test_auto_palette_is_halloween_only_on_october_31(self) -> None:
+        for year in (2020, 2024, 2026, 2028):
+            self.assertEqual(resolve_palette("auto", date(year, 10, 31)), "halloween")
+            self.assertEqual(resolve_palette("auto", date(year, 10, 30)), "default")
+            self.assertEqual(resolve_palette("auto", date(year, 11, 1)), "default")
+        self.assertEqual(resolve_palette("halloween", date(2026, 11, 1)), "halloween")
+        self.assertEqual(resolve_palette("default", date(2026, 10, 31)), "default")
+        with self.assertRaises(ValueError):
+            resolve_palette("green", date(2026, 10, 31))
+
+    def test_halloween_colors_replace_green_levels_and_default_svg_is_unchanged(self) -> None:
+        """Primer Halloween levels 1-4, with the default empty cell left in place.
+
+        Omitting the palette paints the same SVG as palette ``default``.
+        """
+        calendar = _tiny_calendar()
+        pieces = pieces_for_calendar(calendar)
+        for theme in ("light", "dark"):
+            plain = render_svg(calendar, pieces, theme)
+            explicit = render_svg(calendar, pieces, theme, palette="default")
+            halloween = render_svg(calendar, pieces, theme, palette="halloween")
+            self.assertEqual(plain, explicit)
+            self.assertNotEqual(plain, halloween)
+            green = PALETTES[theme]["levels"]
+            orange = HALLOWEEN_PALETTES[theme]["levels"]
+            # @primer/primitives 11.10.0, --contribution-halloween-bgColor-1..4.
+            # Level 0 stays --contribution-default-bgColor-0.
+            expected = {
+                "light": ("#eff2f5", "#f0db3d", "#ffd642", "#f68c41", "#1f2328"),
+                "dark": ("#151b23", "#fac68f", "#c46212", "#984b10", "#e3d04f"),
+            }
+            self.assertEqual(orange, expected[theme])
+            self.assertEqual(green[0], orange[0])
+            self.assertIn(f'fill="{green[0]}"', halloween)
+            for level in range(1, 5):
+                self.assertIn(f'fill="{orange[level]}"', halloween)
+                self.assertNotIn(f'fill="{green[level]}"', halloween)
+                self.assertIn(f'fill="{green[level]}"', plain)
+            self.assertIn('href="#b' + theme[0], halloween)
+        with self.assertRaises(ValueError):
+            render_svg(calendar, pieces, "light", palette="auto")
+
+    def test_cli_palette_flag_selects_halloween_without_changing_the_default(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (3, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            env = os.environ.copy()
+            written: dict[str, tuple[str, str]] = {}
+            for name, extra in (
+                ("omit", []),
+                ("default", ["--palette", "default"]),
+                ("halloween", ["--palette", "Halloween"]),
+            ):
+                folder = Path(tmp) / name
+                proc = _run_generate(
+                    ["--input", str(source), "--out", str(folder), "--seed", "0", *extra],
+                    env=env,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                written[name] = (
+                    (folder / "tetris-contrib.svg").read_text(encoding="utf-8"),
+                    (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8"),
+                )
+            self.assertEqual(written["omit"], written["default"])
+            light, dark = written["halloween"]
+            self.assertIn('fill="#f0db3d"', light)
+            self.assertIn('fill="#1f2328"', light)
+            self.assertNotIn('fill="#aceebb"', light)
+            self.assertIn('fill="#fac68f"', dark)
+            self.assertIn('fill="#e3d04f"', dark)
+            self.assertNotIn('fill="#56d364"', dark)
+            self.assertNotEqual(written["omit"], written["halloween"])
+            action = (ROOT / "action.yml").read_text(encoding="utf-8")
+            self.assertIn("\n  palette:\n", action)
+            self.assertIn("TETRIS_PALETTE: ${{ inputs.palette }}", action)
+            self.assertIn('--palette "${TETRIS_PALETTE-default}"', action)
+
+    def test_cli_auto_palette_follows_injected_date_not_the_clock(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (4, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+
+            def render(name: str, day: date, flag: str | None) -> tuple[str, str]:
+                folder = Path(tmp) / name
+                argv = ["--input", str(source), "--out", str(folder), "--seed", "0"]
+                if flag is not None:
+                    argv.extend(["--palette", flag])
+                stderr = io.StringIO()
+                with patch("generate.datetime") as clock:
+                    clock.now.side_effect = AssertionError("palette selection read the clock")
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                        code = generate.main(argv, today=day)
+                self.assertEqual(code, 0, stderr.getvalue())
+                return (
+                    (folder / "tetris-contrib.svg").read_text(encoding="utf-8"),
+                    (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8"),
+                )
+
+            halloween_day = render("oct31", date(2024, 10, 31), "AUTO")
+            ordinary_day = render("nov1", date(2026, 11, 1), "auto")
+            day_before = render("oct30", date(2028, 10, 30), "auto")
+            forced = render("forced", date(2026, 11, 1), "halloween")
+            omitted = render("omitted", date(2026, 10, 31), None)
+
+            def is_halloween(pair: tuple[str, str]) -> bool:
+                light, dark = pair
+                return 'fill="#f0db3d"' in light and 'fill="#fac68f"' in dark
+
+            def is_green(pair: tuple[str, str]) -> bool:
+                light, dark = pair
+                return 'fill="#aceebb"' in light and 'fill="#56d364"' in dark
+
+            self.assertTrue(is_halloween(halloween_day))
+            self.assertTrue(is_green(ordinary_day))
+            self.assertTrue(is_green(day_before))
+            self.assertEqual(ordinary_day, day_before)
+            self.assertTrue(is_halloween(forced))
+            self.assertEqual(forced[0], halloween_day[0])
+            self.assertEqual(forced[1], halloween_day[1])
+            self.assertTrue(is_green(omitted))
+            self.assertEqual(omitted, ordinary_day)
+
+    def test_cli_rejects_unknown_palette_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            light = Path(tmp) / "light.svg"
+            dark = Path(tmp) / "dark.svg"
+            missing = Path(tmp) / "missing.json"
+            env = os.environ.copy()
+            for bad in ("", "green", "seasonal", "winter"):
+                proc = _run_generate(
+                    [
+                        "--input",
+                        str(missing),
+                        "--light",
+                        str(light),
+                        "--dark",
+                        str(dark),
+                        "--palette",
+                        bad,
+                    ],
+                    env=env,
+                )
+                self.assertNotEqual(proc.returncode, 0, bad)
+                self.assertIn("palette", proc.stderr)
+                self.assertIn("halloween", proc.stderr)
+                self.assertIn("31 October", proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertNotIn("was not found", proc.stderr)
+                self.assertFalse(light.exists())
+                self.assertFalse(dark.exists())
+                self.assertFalse(missing.exists())
 
 
 def _fall_frames(svg: str) -> str:
