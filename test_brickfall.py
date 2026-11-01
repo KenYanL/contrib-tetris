@@ -40,12 +40,15 @@ from brickfall import (  # noqa: E402
     calendar_to_json,
     coverage_errors,
     decompose,
+    QUERY,
+    QUERY_DEFAULT,
     fetch_calendar,
     lands_before,
     make_timeline,
     match_shape,
     pieces_for_calendar,
     profile_window,
+    range_exceeds_one_year,
     render_svg,
     resolve_palette,
     rotations,
@@ -998,6 +1001,104 @@ class InputValidationTests(unittest.TestCase):
 
 
 class ApiFailureTests(unittest.TestCase):
+    def test_profile_window_is_always_longer_than_one_year(self) -> None:
+        """Sunday of last year through Saturday of this week never fits in one year.
+
+        A year shifts the weekday forward by one, or by two when it crosses
+        29 February, so the paddings cannot both be zero.
+        """
+        day = date(2024, 1, 1)
+        last = date(2028, 12, 31)
+        while day <= last:
+            start, end = profile_window(day)
+            self.assertGreater((end - start).days, 365, day.isoformat())
+            self.assertTrue(range_exceeds_one_year(start, end), day.isoformat())
+            day += timedelta(days=1)
+        # ``to`` is 23:59:59Z, so the anniversary date itself is already past.
+        self.assertFalse(range_exceeds_one_year(date(2026, 1, 1), date(2026, 12, 31)))
+        self.assertTrue(range_exceeds_one_year(date(2026, 1, 1), date(2027, 1, 1)))
+        self.assertTrue(range_exceeds_one_year(date(2024, 2, 29), date(2025, 2, 28)))
+        self.assertFalse(range_exceeds_one_year(date(2024, 2, 29), date(2025, 2, 27)))
+
+    def test_profile_fetch_asks_for_the_default_collection(self) -> None:
+        """The over-long profile window must not send from/to, and must not retry."""
+        payload = _api_calendar("2026-10-12", 2, "SECOND_QUARTILE")
+        with patch("brickfall._graphql", return_value=payload) as graphql:
+            calendar = fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(graphql.call_count, 1)
+        token, query, variables = graphql.call_args.args
+        self.assertEqual(token, "token")
+        self.assertEqual(query, QUERY_DEFAULT)
+        self.assertEqual(variables, {"login": "octocat"})
+        self.assertNotIn("$from", query)
+        self.assertEqual(calendar.username, "octocat")
+        self.assertEqual(calendar.total, 2)
+
+    def test_short_window_sends_from_and_to(self) -> None:
+        start, end = date(2026, 10, 11), date(2026, 10, 17)
+        self.assertFalse(range_exceeds_one_year(start, end))
+        payload = _api_calendar("2026-10-12", 1, "FIRST_QUARTILE")
+        with patch("brickfall.profile_window", return_value=(start, end)):
+            with patch("brickfall._graphql", return_value=payload) as graphql:
+                calendar = fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(graphql.call_count, 1)
+        _token, query, variables = graphql.call_args.args
+        self.assertEqual(query, QUERY)
+        self.assertEqual(
+            variables,
+            {
+                "login": "octocat",
+                "from": "2026-10-11T00:00:00Z",
+                "to": "2026-10-17T23:59:59Z",
+            },
+        )
+        self.assertEqual(calendar.total, 1)
+
+    def test_year_span_error_retries_the_default_collection(self) -> None:
+        """GitHub's real rejection still falls back when a shorter range is refused."""
+        start, end = date(2026, 10, 11), date(2026, 10, 17)
+        payload = _api_calendar("2026-10-12", 4, "FOURTH_QUARTILE")
+        calls: list[tuple[str, dict]] = []
+
+        def fake(_token: str, query: str, variables: dict) -> dict:
+            calls.append((query, variables))
+            if query == QUERY:
+                raise GraphQLError(
+                    "The total time spanned by 'from' and 'to' must not exceed 1 year"
+                )
+            return payload
+
+        with patch("brickfall.profile_window", return_value=(start, end)):
+            with patch("brickfall._graphql", side_effect=fake):
+                calendar = fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(
+            calls,
+            [
+                (
+                    QUERY,
+                    {
+                        "login": "octocat",
+                        "from": "2026-10-11T00:00:00Z",
+                        "to": "2026-10-17T23:59:59Z",
+                    },
+                ),
+                (QUERY_DEFAULT, {"login": "octocat"}),
+            ],
+        )
+        self.assertEqual(calendar.total, 4)
+
+    def test_other_graphql_errors_are_not_retried(self) -> None:
+        start, end = date(2026, 10, 11), date(2026, 10, 17)
+        with patch("brickfall.profile_window", return_value=(start, end)):
+            with patch(
+                "brickfall._graphql",
+                side_effect=GraphQLError("bad credentials"),
+            ) as graphql:
+                with self.assertRaises(GraphQLError) as caught:
+                    fetch_calendar("octocat", "token", today=date(2026, 10, 17))
+        self.assertEqual(str(caught.exception), "bad credentials")
+        self.assertEqual(graphql.call_count, 1)
+
     def test_fetch_names_a_missing_user_and_an_empty_calendar(self) -> None:
         """These are the messages the README says the action fails with."""
         with patch("brickfall._graphql", return_value={"user": None}):
@@ -1303,6 +1404,29 @@ def _run_generate(args: list[str], *, env: dict[str, str], cwd: str | None = Non
         env=env,
         cwd=cwd,
     )
+
+
+def _api_calendar(day: str, count: int, level: str) -> dict:
+    """One contribution day in the shape ``fetch_calendar`` reads from GraphQL."""
+    return {
+        "user": {
+            "contributionsCollection": {
+                "contributionCalendar": {
+                    "weeks": [
+                        {
+                            "contributionDays": [
+                                {
+                                    "date": day,
+                                    "contributionCount": count,
+                                    "contributionLevel": level,
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    }
 
 
 def _json_calendar(
