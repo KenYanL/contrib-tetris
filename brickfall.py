@@ -52,10 +52,12 @@ HALLOWEEN_PALETTES: dict[str, dict[str, object]] = {
 }
 
 # Festive red and green. Level 0 keeps --contribution-default-bgColor-0 so
-# empty cells stay the neutral GitHub background. Levels 1-2 are pine, 3-4
-# are cranberry. Text and the cell border match the default theme.
+# empty cells stay the neutral GitHub background. Levels 1-2 are pine.
+# Levels 3-4 are cranberry on the light graph and true red on the dark
+# graph (a deeper red, then pure red). Text and the cell border match the
+# default theme.
 # Light: #eff2f5 #a9d082 #529732 #d0123c #7c1024
-# Dark:  #151b23 #234d22 #4d7c28 #ff5368 #ffb3bc
+# Dark:  #151b23 #234d22 #4d7c28 #b00000 #ff0000
 CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
     "light": {
         "levels": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#7c1024"),
@@ -63,7 +65,7 @@ CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
         "border": "rgba(31,35,40,0.06)",
     },
     "dark": {
-        "levels": ("#151b23", "#234d22", "#4d7c28", "#ff5368", "#ffb3bc"),
+        "levels": ("#151b23", "#234d22", "#4d7c28", "#b00000", "#ff0000"),
         "text": "#9198a1",
         "border": "rgba(240,246,252,0.05)",
     },
