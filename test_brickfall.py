@@ -1277,8 +1277,8 @@ class PaletteTests(unittest.TestCase):
         calendar = _tiny_calendar()
         pieces = pieces_for_calendar(calendar)
         expected = {
-            "light": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#7c1024"),
-            "dark": ("#151b23", "#234d22", "#4d7c28", "#b00000", "#ff0000"),
+            "light": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#b8860b"),
+            "dark": ("#151b23", "#234d22", "#4d7c28", "#b00000", "#ffbf00"),
         }
         for theme in ("light", "dark"):
             plain = render_svg(calendar, pieces, theme)
@@ -1374,13 +1374,13 @@ class PaletteTests(unittest.TestCase):
             self.assertIn('fill="#a9d082"', light)
             self.assertIn('fill="#529732"', light)
             self.assertIn('fill="#d0123c"', light)
-            self.assertIn('fill="#7c1024"', light)
+            self.assertIn('fill="#b8860b"', light)
             self.assertIn('fill="#eff2f5"', light)
             self.assertNotIn('fill="#aceebb"', light)
             self.assertIn('fill="#234d22"', dark)
             self.assertIn('fill="#4d7c28"', dark)
             self.assertIn('fill="#b00000"', dark)
-            self.assertIn('fill="#ff0000"', dark)
+            self.assertIn('fill="#ffbf00"', dark)
             self.assertIn('fill="#151b23"', dark)
             self.assertNotIn('fill="#56d364"', dark)
             action = (ROOT / "action.yml").read_text(encoding="utf-8")
@@ -1438,7 +1438,7 @@ class PaletteTests(unittest.TestCase):
 
             def is_christmas(pair: tuple[str, str]) -> bool:
                 light, dark = pair
-                return 'fill="#a9d082"' in light and 'fill="#ff0000"' in dark
+                return 'fill="#a9d082"' in light and 'fill="#ffbf00"' in dark
 
             self.assertTrue(is_halloween(halloween_day))
             self.assertTrue(is_green(ordinary_day))
