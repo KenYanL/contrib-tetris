@@ -86,7 +86,7 @@ The public contribution calendar is readable with the default workflow token.
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 | `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
-| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses pine, red, and gold. `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), and green every other UTC day. |
+| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), and green every other UTC day. |
 
 Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, or `auto`.
 
@@ -135,7 +135,7 @@ Colors follow the contribution graph shipped on github.com. The default palette 
 
 `palette: halloween` (CLI: `--palette halloween`) paints both SVGs with Primer `--contribution-halloween-bgColor-1` through `-4` from [@primer/primitives](https://github.com/primer/primitives) 11.10.0 (`dist/css/functional/themes/light.css` and `dark.css`). Level 0 keeps `--contribution-default-bgColor-0`, because the Halloween tokens start at level 1. Light `#eff2f5 #f0db3d #ffd642 #f68c41 #1f2328`, dark `#151b23 #fac68f #c46212 #984b10 #e3d04f`. On the dark graph that is pale peach, orange, burnt orange, then yellow.
 
-`palette: christmas` (CLI: `--palette christmas`) paints both SVGs in pine, red, and gold. Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. Levels 1 and 2 are pine, a step darker on the light SVG and a step brighter on the dark SVG. Level 3 is cranberry on the light SVG and true red on the dark SVG. Level 4 is gold, like a Christmas light: deep amber `#b8860b` on the light SVG, where it still contrasts with the white background, and warm gold `#ffbf00` on the dark SVG. Light `#eff2f5 #a9d082 #529732 #d0123c #b8860b`, dark `#151b23 #234d22 #4d7c28 #b00000 #ffbf00`.
+`palette: christmas` (CLI: `--palette christmas`) paints both SVGs from [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas) (`386641`, `6a994e`, `a7c957`, `f2e8cf`, `bc4749`). The cream `#f2e8cf` is dropped. Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. The other four colors are ordered by contrast against that background. Light `#eff2f5 #a7c957 #6a994e #bc4749 #386641`, dark `#151b23 #386641 #bc4749 #6a994e #a7c957`.
 
 `palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, and the default green palette on every other UTC date. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including those holidays.
 

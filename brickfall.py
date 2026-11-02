@@ -51,21 +51,22 @@ HALLOWEEN_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
-# Festive pine, red, and gold. Level 0 keeps --contribution-default-bgColor-0
-# so empty cells stay the neutral GitHub background. Levels 1-2 are pine.
-# Level 3 is cranberry on the light graph and true red on the dark graph.
-# Level 4 is gold, like a Christmas light: deep amber on light, warm gold
-# on dark. Text and the cell border match the default theme.
-# Light: #eff2f5 #a9d082 #529732 #d0123c #b8860b
-# Dark:  #151b23 #234d22 #4d7c28 #b00000 #ffbf00
+# Coolors' most popular Christmas palette
+# (https://coolors.co/palettes/popular/christmas):
+# 386641, 6a994e, a7c957, f2e8cf, bc4749.
+# The cream (#f2e8cf) is dropped. Level 0 keeps the neutral GitHub empty
+# cell. The other four colors are ordered by contrast against that
+# background. Text and the cell border match the default theme.
+# Light: #eff2f5 #a7c957 #6a994e #bc4749 #386641
+# Dark:  #151b23 #386641 #bc4749 #6a994e #a7c957
 CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
     "light": {
-        "levels": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#b8860b"),
+        "levels": ("#eff2f5", "#a7c957", "#6a994e", "#bc4749", "#386641"),
         "text": "#59636e",
         "border": "rgba(31,35,40,0.06)",
     },
     "dark": {
-        "levels": ("#151b23", "#234d22", "#4d7c28", "#b00000", "#ffbf00"),
+        "levels": ("#151b23", "#386641", "#bc4749", "#6a994e", "#a7c957"),
         "text": "#9198a1",
         "border": "rgba(240,246,252,0.05)",
     },

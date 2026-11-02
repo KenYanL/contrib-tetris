@@ -87,13 +87,13 @@ def parse_palette(raw: object) -> str:
     """Return a palette name, or raise InputError naming palette.
 
     ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
-    colors on both SVGs. ``christmas`` uses pine, red, and gold. ``auto``
+    colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette. ``auto``
     uses halloween on 31 October (UTC), christmas on 24-26 December (UTC),
     and the green graph every other day.
     """
     hint = (
         "Use default for the usual green graph, halloween for GitHub's Halloween "
-        "colors, christmas for pine, red, and gold, or auto to use halloween "
+        "colors, christmas for Coolors' popular Christmas palette, or auto to use halloween "
         "on 31 October (UTC), christmas on 24-26 December (UTC), and default every other day."
     )
     if not isinstance(raw, str):
@@ -244,7 +244,7 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
             "Contribution colors for both the light and dark SVGs. "
             "default is the usual green graph. "
             "halloween uses GitHub's Halloween graph colors. "
-            "christmas uses pine, red, and gold. "
+            "christmas uses Coolors' popular Christmas palette. "
             "auto uses halloween on 31 October (UTC), christmas on 24-26 December (UTC), "
             "and default every other day"
         ),

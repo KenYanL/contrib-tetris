@@ -11,7 +11,7 @@ release.
 
 ### Added
 
-- Optional `christmas` value for the `palette` input (`--palette christmas`). Both SVGs use pine, red, and gold. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#a9d082 #529732 #d0123c #b8860b`. Dark levels 1-4 are `#234d22 #4d7c28 #b00000 #ffbf00`. `auto` uses that palette on 24, 25, and 26 December (UTC), keeps Halloween on 31 October (UTC), and stays on the green graph every other day (2026-11-02).
+- Optional `christmas` value for the `palette` input (`--palette christmas`). Both SVGs use [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas) (`386641`, `6a994e`, `a7c957`, `bc4749`; the cream `f2e8cf` is dropped), ordered by contrast against the background. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#a7c957 #6a994e #bc4749 #386641`. Dark levels 1-4 are `#386641 #bc4749 #6a994e #a7c957`. `auto` uses that palette on 24, 25, and 26 December (UTC), keeps Halloween on 31 October (UTC), and stays on the green graph every other day (2026-11-02).
 
 ### Fixed
 

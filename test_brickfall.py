@@ -1269,16 +1269,18 @@ class PaletteTests(unittest.TestCase):
             render_svg(calendar, pieces, "light", palette="auto")
 
     def test_christmas_colors_are_five_levels_with_a_neutral_empty_cell(self) -> None:
-        """Red and green levels 1-4, with the default empty cell left in place.
+        """Coolors Christmas levels 1-4, with the default empty cell left in place.
 
-        Neighboring levels stay far enough apart to tell apart, and each
-        active level clears the empty-cell background.
+        Levels are ordered by contrast with the empty cell. Each active level
+        clears that background, and neighboring levels stay far enough apart
+        to tell apart. The red sits beside the darkest green, which is the
+        smallest step.
         """
         calendar = _tiny_calendar()
         pieces = pieces_for_calendar(calendar)
         expected = {
-            "light": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#b8860b"),
-            "dark": ("#151b23", "#234d22", "#4d7c28", "#b00000", "#ffbf00"),
+            "light": ("#eff2f5", "#a7c957", "#6a994e", "#bc4749", "#386641"),
+            "dark": ("#151b23", "#386641", "#bc4749", "#6a994e", "#a7c957"),
         }
         for theme in ("light", "dark"):
             plain = render_svg(calendar, pieces, theme)
@@ -1293,7 +1295,7 @@ class PaletteTests(unittest.TestCase):
             self.assertIn(f'fill="{green[0]}"', christmas)
             for level in range(1, 5):
                 self.assertGreaterEqual(_contrast(festive[level], festive[0]), 1.45)
-                self.assertGreaterEqual(_contrast(festive[level], festive[level - 1]), 1.45)
+                self.assertGreaterEqual(_contrast(festive[level], festive[level - 1]), 1.30)
                 self.assertIn(f'fill="{festive[level]}"', christmas)
                 self.assertNotIn(f'fill="{green[level]}"', christmas)
                 self.assertNotEqual(festive[level], HALLOWEEN_PALETTES[theme]["levels"][level])
@@ -1371,16 +1373,16 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             light = (folder / "tetris-contrib.svg").read_text(encoding="utf-8")
             dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
-            self.assertIn('fill="#a9d082"', light)
-            self.assertIn('fill="#529732"', light)
-            self.assertIn('fill="#d0123c"', light)
-            self.assertIn('fill="#b8860b"', light)
+            self.assertIn('fill="#a7c957"', light)
+            self.assertIn('fill="#6a994e"', light)
+            self.assertIn('fill="#bc4749"', light)
+            self.assertIn('fill="#386641"', light)
             self.assertIn('fill="#eff2f5"', light)
             self.assertNotIn('fill="#aceebb"', light)
-            self.assertIn('fill="#234d22"', dark)
-            self.assertIn('fill="#4d7c28"', dark)
-            self.assertIn('fill="#b00000"', dark)
-            self.assertIn('fill="#ffbf00"', dark)
+            self.assertIn('fill="#386641"', dark)
+            self.assertIn('fill="#bc4749"', dark)
+            self.assertIn('fill="#6a994e"', dark)
+            self.assertIn('fill="#a7c957"', dark)
             self.assertIn('fill="#151b23"', dark)
             self.assertNotIn('fill="#56d364"', dark)
             action = (ROOT / "action.yml").read_text(encoding="utf-8")
@@ -1438,7 +1440,7 @@ class PaletteTests(unittest.TestCase):
 
             def is_christmas(pair: tuple[str, str]) -> bool:
                 light, dark = pair
-                return 'fill="#a9d082"' in light and 'fill="#ffbf00"' in dark
+                return 'fill="#a7c957"' in light and 'fill="#bc4749"' in dark
 
             self.assertTrue(is_halloween(halloween_day))
             self.assertTrue(is_green(ordinary_day))
