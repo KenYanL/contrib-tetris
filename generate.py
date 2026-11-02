@@ -7,6 +7,7 @@ Examples:
   python3 generate.py --username KenYanL --token "$GITHUB_TOKEN" \\
       --light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg --seed 1
   python3 generate.py --input sample/contributions.json --out dist --palette halloween
+  python3 generate.py --input sample/contributions.json --out dist --palette christmas
   python3 generate.py --input sample/contributions.json --out dist --palette auto
 """
 
@@ -86,11 +87,14 @@ def parse_palette(raw: object) -> str:
     """Return a palette name, or raise InputError naming palette.
 
     ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
-    colors on both SVGs. ``auto`` uses those colors only on 31 October (UTC).
+    colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette. ``auto``
+    uses halloween on 31 October (UTC), christmas on 24-26 December (UTC),
+    and the green graph every other day.
     """
     hint = (
         "Use default for the usual green graph, halloween for GitHub's Halloween "
-        "colors, or auto to use those colors only on 31 October (UTC)."
+        "colors, christmas for Coolors' popular Christmas palette, or auto to use halloween "
+        "on 31 October (UTC), christmas on 24-26 December (UTC), and default every other day."
     )
     if not isinstance(raw, str):
         raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
@@ -240,7 +244,9 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
             "Contribution colors for both the light and dark SVGs. "
             "default is the usual green graph. "
             "halloween uses GitHub's Halloween graph colors. "
-            "auto uses halloween only on 31 October (UTC) and default every other day"
+            "christmas uses Coolors' popular Christmas palette. "
+            "auto uses halloween on 31 October (UTC), christmas on 24-26 December (UTC), "
+            "and default every other day"
         ),
     )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")

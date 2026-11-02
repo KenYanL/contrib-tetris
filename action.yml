@@ -48,8 +48,9 @@ inputs:
   palette:
     description: >-
       Contribution colors for both SVGs. default is the usual green graph.
-      halloween uses GitHub's Halloween graph colors. auto uses halloween
-      only on 31 October (UTC) and default every other day. Omit the input
+      halloween uses GitHub's Halloween graph colors. christmas uses Coolors'
+      popular Christmas palette. auto uses halloween on 31 October (UTC), christmas
+      on 24-26 December (UTC), and default every other day. Omit the input
       to keep the usual green graph. An empty value is rejected.
     required: false
     default: "default"
