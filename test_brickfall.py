@@ -26,6 +26,7 @@ from generate import (  # noqa: E402
     validate_output_path,
 )
 from brickfall import (  # noqa: E402
+    CHRISTMAS_PALETTES,
     HALLOWEEN_PALETTES,
     ORIENTATIONS,
     PALETTES,
@@ -1173,8 +1174,27 @@ class ApiFailureTests(unittest.TestCase):
                 self.assertFalse(light.parent.exists(), message)
 
 
+def _channel(value: int) -> float:
+    scaled = value / 255
+    if scaled <= 0.04045:
+        return scaled / 12.92
+    return ((scaled + 0.055) / 1.055) ** 2.4
+
+
+def _contrast(left: str, right: str) -> float:
+    """WCAG contrast ratio of two #rrggbb colors."""
+
+    def luminance(color: str) -> float:
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+        return 0.2126 * _channel(red) + 0.7152 * _channel(green) + 0.0722 * _channel(blue)
+
+    lighter = max(luminance(left), luminance(right))
+    darker = min(luminance(left), luminance(right))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 class PaletteTests(unittest.TestCase):
-    """Halloween colors, and the UTC date switch for palette auto.
+    """Halloween and Christmas colors, and the UTC date switch for palette auto.
 
     The date is passed in. These tests do not read the clock.
     """
@@ -1182,6 +1202,7 @@ class PaletteTests(unittest.TestCase):
     def test_parse_palette_names(self) -> None:
         self.assertEqual(parse_palette("default"), "default")
         self.assertEqual(parse_palette(" Halloween "), "halloween")
+        self.assertEqual(parse_palette(" Christmas "), "christmas")
         self.assertEqual(parse_palette("AUTO"), "auto")
         for bad in ("", " ", "green", "seasonal", "winter", "none", "0", None, 1, True):
             with self.assertRaises(InputError) as caught:
@@ -1189,7 +1210,9 @@ class PaletteTests(unittest.TestCase):
             message = str(caught.exception)
             self.assertIn("palette", message)
             self.assertIn("halloween", message)
+            self.assertIn("christmas", message)
             self.assertIn("31 October", message)
+            self.assertIn("24-26 December", message)
 
     def test_auto_palette_is_halloween_only_on_october_31(self) -> None:
         for year in (2020, 2024, 2026, 2028):
@@ -1197,9 +1220,21 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(resolve_palette("auto", date(year, 10, 30)), "default")
             self.assertEqual(resolve_palette("auto", date(year, 11, 1)), "default")
         self.assertEqual(resolve_palette("halloween", date(2026, 11, 1)), "halloween")
+        self.assertEqual(resolve_palette("halloween", date(2026, 12, 25)), "halloween")
         self.assertEqual(resolve_palette("default", date(2026, 10, 31)), "default")
         with self.assertRaises(ValueError):
             resolve_palette("green", date(2026, 10, 31))
+
+    def test_auto_palette_is_christmas_on_december_24_through_26(self) -> None:
+        for year in (2020, 2024, 2026, 2028):
+            for day in (24, 25, 26):
+                self.assertEqual(resolve_palette("auto", date(year, 12, day)), "christmas")
+            self.assertEqual(resolve_palette("auto", date(year, 12, 23)), "default")
+            self.assertEqual(resolve_palette("auto", date(year, 12, 27)), "default")
+            self.assertEqual(resolve_palette("auto", date(year, 10, 31)), "halloween")
+        self.assertEqual(resolve_palette("christmas", date(2026, 12, 23)), "christmas")
+        self.assertEqual(resolve_palette("christmas", date(2026, 11, 1)), "christmas")
+        self.assertEqual(resolve_palette("default", date(2026, 12, 25)), "default")
 
     def test_halloween_colors_replace_green_levels_and_default_svg_is_unchanged(self) -> None:
         """Primer Halloween levels 1-4, with the default empty cell left in place.
@@ -1232,6 +1267,37 @@ class PaletteTests(unittest.TestCase):
             self.assertIn('href="#b' + theme[0], halloween)
         with self.assertRaises(ValueError):
             render_svg(calendar, pieces, "light", palette="auto")
+
+    def test_christmas_colors_are_five_levels_with_a_neutral_empty_cell(self) -> None:
+        """Red and green levels 1-4, with the default empty cell left in place.
+
+        Neighboring levels stay far enough apart to tell apart, and each
+        active level clears the empty-cell background.
+        """
+        calendar = _tiny_calendar()
+        pieces = pieces_for_calendar(calendar)
+        expected = {
+            "light": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#7c1024"),
+            "dark": ("#151b23", "#234d22", "#4d7c28", "#ff5368", "#ffb3bc"),
+        }
+        for theme in ("light", "dark"):
+            plain = render_svg(calendar, pieces, theme)
+            christmas = render_svg(calendar, pieces, theme, palette="christmas")
+            self.assertNotEqual(plain, christmas)
+            green = PALETTES[theme]["levels"]
+            festive = CHRISTMAS_PALETTES[theme]["levels"]
+            self.assertEqual(festive, expected[theme])
+            self.assertEqual(len(festive), 5)
+            self.assertEqual(len(set(festive)), 5)
+            self.assertEqual(green[0], festive[0])
+            self.assertIn(f'fill="{green[0]}"', christmas)
+            for level in range(1, 5):
+                self.assertGreaterEqual(_contrast(festive[level], festive[0]), 1.45)
+                self.assertGreaterEqual(_contrast(festive[level], festive[level - 1]), 1.45)
+                self.assertIn(f'fill="{festive[level]}"', christmas)
+                self.assertNotIn(f'fill="{green[level]}"', christmas)
+                self.assertNotEqual(festive[level], HALLOWEEN_PALETTES[theme]["levels"][level])
+            self.assertIn('href="#b' + theme[0], christmas)
 
     def test_cli_palette_flag_selects_halloween_without_changing_the_default(self) -> None:
         import json
@@ -1276,6 +1342,51 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("TETRIS_PALETTE: ${{ inputs.palette }}", action)
             self.assertIn('--palette "${TETRIS_PALETTE-default}"', action)
 
+    def test_cli_palette_flag_selects_christmas(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (3, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            folder = Path(tmp) / "christmas"
+            proc = _run_generate(
+                [
+                    "--input",
+                    str(source),
+                    "--out",
+                    str(folder),
+                    "--seed",
+                    "0",
+                    "--palette",
+                    "Christmas",
+                ],
+                env=os.environ.copy(),
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            light = (folder / "tetris-contrib.svg").read_text(encoding="utf-8")
+            dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
+            self.assertIn('fill="#a9d082"', light)
+            self.assertIn('fill="#529732"', light)
+            self.assertIn('fill="#d0123c"', light)
+            self.assertIn('fill="#7c1024"', light)
+            self.assertIn('fill="#eff2f5"', light)
+            self.assertNotIn('fill="#aceebb"', light)
+            self.assertIn('fill="#234d22"', dark)
+            self.assertIn('fill="#4d7c28"', dark)
+            self.assertIn('fill="#ff5368"', dark)
+            self.assertIn('fill="#ffb3bc"', dark)
+            self.assertIn('fill="#151b23"', dark)
+            self.assertNotIn('fill="#56d364"', dark)
+            action = (ROOT / "action.yml").read_text(encoding="utf-8")
+            self.assertIn("christmas", action)
+            self.assertIn("24-26 December", action)
+
     def test_cli_auto_palette_follows_injected_date_not_the_clock(self) -> None:
         import json
 
@@ -1310,6 +1421,12 @@ class PaletteTests(unittest.TestCase):
             day_before = render("oct30", date(2028, 10, 30), "auto")
             forced = render("forced", date(2026, 11, 1), "halloween")
             omitted = render("omitted", date(2026, 10, 31), None)
+            christmas_eve = render("dec24", date(2024, 12, 24), "auto")
+            christmas_day = render("dec25", date(2026, 12, 25), "auto")
+            boxing_day = render("dec26", date(2028, 12, 26), "AUTO")
+            before_christmas = render("dec23", date(2026, 12, 23), "auto")
+            after_christmas = render("dec27", date(2020, 12, 27), "auto")
+            forced_christmas = render("forced-christmas", date(2026, 11, 1), "christmas")
 
             def is_halloween(pair: tuple[str, str]) -> bool:
                 light, dark = pair
@@ -1318,6 +1435,10 @@ class PaletteTests(unittest.TestCase):
             def is_green(pair: tuple[str, str]) -> bool:
                 light, dark = pair
                 return 'fill="#aceebb"' in light and 'fill="#56d364"' in dark
+
+            def is_christmas(pair: tuple[str, str]) -> bool:
+                light, dark = pair
+                return 'fill="#a9d082"' in light and 'fill="#ff5368"' in dark
 
             self.assertTrue(is_halloween(halloween_day))
             self.assertTrue(is_green(ordinary_day))
@@ -1328,6 +1449,17 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(forced[1], halloween_day[1])
             self.assertTrue(is_green(omitted))
             self.assertEqual(omitted, ordinary_day)
+            self.assertTrue(is_christmas(christmas_eve))
+            self.assertTrue(is_christmas(christmas_day))
+            self.assertTrue(is_christmas(boxing_day))
+            self.assertEqual(christmas_eve, christmas_day)
+            self.assertEqual(christmas_day, boxing_day)
+            self.assertEqual(forced_christmas, christmas_day)
+            self.assertTrue(is_green(before_christmas))
+            self.assertTrue(is_green(after_christmas))
+            self.assertEqual(before_christmas, ordinary_day)
+            self.assertEqual(after_christmas, ordinary_day)
+            self.assertNotEqual(christmas_day, halloween_day)
 
     def test_cli_rejects_unknown_palette_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1352,7 +1484,9 @@ class PaletteTests(unittest.TestCase):
                 self.assertNotEqual(proc.returncode, 0, bad)
                 self.assertIn("palette", proc.stderr)
                 self.assertIn("halloween", proc.stderr)
+                self.assertIn("christmas", proc.stderr)
                 self.assertIn("31 October", proc.stderr)
+                self.assertIn("24-26 December", proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
                 self.assertNotIn("was not found", proc.stderr)
                 self.assertFalse(light.exists())

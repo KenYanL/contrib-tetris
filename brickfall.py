@@ -51,12 +51,39 @@ HALLOWEEN_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+# Festive red and green. Level 0 keeps --contribution-default-bgColor-0 so
+# empty cells stay the neutral GitHub background. Levels 1-2 are pine, 3-4
+# are cranberry. Text and the cell border match the default theme.
+# Light: #eff2f5 #a9d082 #529732 #d0123c #7c1024
+# Dark:  #151b23 #234d22 #4d7c28 #ff5368 #ffb3bc
+CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#a9d082", "#529732", "#d0123c", "#7c1024"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#234d22", "#4d7c28", "#ff5368", "#ffb3bc"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
 # Concrete palettes render_svg can paint. ``auto`` is resolved before this.
 PALETTE_TABLES: dict[str, dict[str, dict[str, object]]] = {
     "default": PALETTES,
     "halloween": HALLOWEEN_PALETTES,
+    "christmas": CHRISTMAS_PALETTES,
 }
-PALETTE_NAMES = ("default", "halloween", "auto")
+PALETTE_NAMES = ("default", "halloween", "christmas", "auto")
+
+# Holidays ``auto`` paints, in priority order. Each entry is a concrete
+# palette and the UTC month-days it covers. Any other day stays the default
+# green graph. To add a holiday, append its palette and dates here.
+AUTO_HOLIDAYS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
+    ("halloween", ((10, 31),)),
+    ("christmas", ((12, 24), (12, 25), (12, 26))),
+)
 
 LEVEL_NAMES = {
     "NONE": 0,
@@ -70,14 +97,19 @@ LEVEL_NAMES = {
 def resolve_palette(name: str, today: date) -> str:
     """Return the concrete palette for ``name`` on ``today``.
 
-    ``default`` and ``halloween`` are returned as given. ``auto`` is
-    ``halloween`` on 31 October and ``default`` on every other day.
-    ``today`` is the calendar day to test. This does not read the clock;
-    pass the current UTC date when the caller means now.
+    ``default``, ``halloween``, and ``christmas`` are returned as given.
+    ``auto`` follows ``AUTO_HOLIDAYS``: halloween on 31 October, christmas
+    on 24-26 December, and ``default`` on every other day. ``today`` is the
+    calendar day to test. This does not read the clock; pass the current
+    UTC date when the caller means now.
     """
     if name == "auto":
-        if today.month == 10 and today.day == 31:
-            return "halloween"
+        key = (today.month, today.day)
+        for palette, days in AUTO_HOLIDAYS:
+            if palette not in PALETTE_TABLES:
+                raise ValueError(f"unknown palette {palette!r}")
+            if key in days:
+                return palette
         return "default"
     if name not in PALETTE_TABLES:
         raise ValueError(f"unknown palette {name!r}")

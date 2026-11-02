@@ -53,7 +53,7 @@ jobs:
           # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token
           # seed: "1"                            # optional; omit for the stable pack
           # speed: "1.0"                         # optional; 2 plays twice as fast, 0.5 at half speed
-          # palette: default                     # optional; halloween, or auto (31 October UTC)
+          # palette: default                     # optional; halloween, christmas, or auto
 
       - name: Publish SVGs to the output branch
         uses: crazy-max/ghaction-github-pages@v5
@@ -86,9 +86,9 @@ The public contribution calendar is readable with the default workflow token.
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 | `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
-| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `auto` uses Halloween only on 31 October (UTC) and green every other UTC day. |
+| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses a red and green graph. `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), and green every other UTC day. |
 
-Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, or `auto`.
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, or `auto`.
 
 ### Outputs
 
@@ -135,7 +135,9 @@ Colors follow the contribution graph shipped on github.com. The default palette 
 
 `palette: halloween` (CLI: `--palette halloween`) paints both SVGs with Primer `--contribution-halloween-bgColor-1` through `-4` from [@primer/primitives](https://github.com/primer/primitives) 11.10.0 (`dist/css/functional/themes/light.css` and `dark.css`). Level 0 keeps `--contribution-default-bgColor-0`, because the Halloween tokens start at level 1. Light `#eff2f5 #f0db3d #ffd642 #f68c41 #1f2328`, dark `#151b23 #fac68f #c46212 #984b10 #e3d04f`. On the dark graph that is pale peach, orange, burnt orange, then yellow.
 
-`palette: auto` (CLI: `--palette auto`) uses the Halloween colors only on 31 October UTC, and the default green palette on every other UTC date. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including 31 October.
+`palette: christmas` (CLI: `--palette christmas`) paints both SVGs in pine green and cranberry. Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. Levels 1 and 2 are pine, and levels 3 and 4 are cranberry, each a step darker on the light SVG and a step brighter on the dark SVG. Light `#eff2f5 #a9d082 #529732 #d0123c #7c1024`, dark `#151b23 #234d22 #4d7c28 #ff5368 #ffb3bc`.
+
+`palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, and the default green palette on every other UTC date. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including those holidays.
 
 ## Develop
 
@@ -146,10 +148,11 @@ python3 -m unittest test_brickfall.py
 python3 generate.py --input sample/contributions.json --out dist
 python3 generate.py --username KenYanL --token "$GITHUB_TOKEN" --out dist
 python3 generate.py --input sample/contributions.json --out dist --palette halloween
+python3 generate.py --input sample/contributions.json --out dist --palette christmas
 python3 generate.py --input sample/contributions.json --out dist --palette auto
 ```
 
-`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts.
+`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December.
 
 `.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders KenYanL's calendar and writes:
 

@@ -9,6 +9,10 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- Optional `christmas` value for the `palette` input (`--palette christmas`). Both SVGs use a red and green scale. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#a9d082 #529732 #d0123c #7c1024`. Dark levels 1-4 are `#234d22 #4d7c28 #ff5368 #ffb3bc`. `auto` uses that palette on 24, 25, and 26 December (UTC), keeps Halloween on 31 October (UTC), and stays on the green graph every other day (2026-11-02).
+
 ### Fixed
 
 - Fetching a contribution calendar no longer sends a ranged GraphQL query that GitHub rejects on every run. The profile window runs from the Sunday of the week one year ago through Saturday of this week, which is always longer than one year, so that query failed and the action retried the default collection. It now asks for the default collection directly. A shorter range that GitHub still rejects for spanning a year falls back the same way (2026-11-01).
