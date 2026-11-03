@@ -53,7 +53,7 @@ jobs:
           # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token
           # seed: "1"                            # optional; omit for the stable pack
           # speed: "1.0"                         # optional; 2 plays twice as fast, 0.5 at half speed
-          # palette: default                     # optional; halloween, christmas, or auto
+          # palette: default                     # optional; halloween, christmas, newyear, or auto
 
       - name: Publish SVGs to the output branch
         uses: crazy-max/ghaction-github-pages@v5
@@ -86,9 +86,9 @@ The public contribution calendar is readable with the default workflow token.
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 | `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
-| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), and green every other UTC day. |
+| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `newyear` uses [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), New Year's Day on 1 January (UTC), and green every other UTC day. |
 
-Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, or `auto`.
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, `newyear`, or `auto`.
 
 ### Outputs
 
@@ -137,7 +137,9 @@ Colors follow the contribution graph shipped on github.com. The default palette 
 
 `palette: christmas` (CLI: `--palette christmas`) paints both SVGs from [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas) (`386641`, `6a994e`, `a7c957`, `f2e8cf`, `bc4749`). The cream `#f2e8cf` is dropped. Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. The other four colors are ordered by contrast against that background. Light `#eff2f5 #a7c957 #6a994e #bc4749 #386641`, dark `#151b23 #386641 #bc4749 #6a994e #a7c957`.
 
-`palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, and the default green palette on every other UTC date. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including those holidays.
+`palette: newyear` (CLI: `--palette newyear`) paints both SVGs from [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00) (`#f9e6a8`, `#f2a900`, `#cc6f00`, `#4d2a00`). Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. The other four colors are ordered by contrast against that background. Light `#eff2f5 #f9e6a8 #f2a900 #cc6f00 #4d2a00`, dark `#151b23 #4d2a00 #cc6f00 #f2a900 #f9e6a8`.
+
+`palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, the New Year colors on 1 January UTC, and the default green palette on every other UTC date, including 31 December and 2 January. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including those holidays.
 
 ## Develop
 
@@ -149,10 +151,11 @@ python3 generate.py --input sample/contributions.json --out dist
 python3 generate.py --username KenYanL --token "$GITHUB_TOKEN" --out dist
 python3 generate.py --input sample/contributions.json --out dist --palette halloween
 python3 generate.py --input sample/contributions.json --out dist --palette christmas
+python3 generate.py --input sample/contributions.json --out dist --palette newyear
 python3 generate.py --input sample/contributions.json --out dist --palette auto
 ```
 
-`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December.
+`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December. New Year's Day is 1 January.
 
 `.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders KenYanL's calendar and writes:
 
