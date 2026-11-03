@@ -32,6 +32,7 @@ from brickfall import (  # noqa: E402
     calendar_to_json,
     coverage_errors,
     fetch_calendar,
+    palette_hint,
     pieces_for_calendar,
     render_svg,
     resolve_palette,
@@ -89,13 +90,10 @@ def parse_palette(raw: object) -> str:
     ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
     colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette. ``auto``
     uses halloween on 31 October (UTC), christmas on 24-26 December (UTC),
-    and the green graph every other day.
+    and the green graph every other day. The sentence comes from
+    ``PALETTE_CATALOG``.
     """
-    hint = (
-        "Use default for the usual green graph, halloween for GitHub's Halloween "
-        "colors, christmas for Coolors' popular Christmas palette, or auto to use halloween "
-        "on 31 October (UTC), christmas on 24-26 December (UTC), and default every other day."
-    )
+    hint = palette_hint()
     if not isinstance(raw, str):
         raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
     value = raw.strip().lower()
@@ -240,6 +238,8 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
     parser.add_argument(
         "--palette",
         default="default",
+        # Date phrases are format_auto_days of PALETTE_CATALOG. The palette
+        # test fails if the catalog gains a holiday and this text does not name it.
         help=(
             "Contribution colors for both the light and dark SVGs. "
             "default is the usual green graph. "

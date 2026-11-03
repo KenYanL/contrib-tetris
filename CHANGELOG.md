@@ -13,6 +13,10 @@ release.
 
 - Optional `christmas` value for the `palette` input (`--palette christmas`). Both SVGs use [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas) (`386641`, `6a994e`, `a7c957`, `bc4749`; the cream `f2e8cf` is dropped), ordered by contrast against the background. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#a7c957 #6a994e #bc4749 #386641`. Dark levels 1-4 are `#386641 #bc4749 #6a994e #a7c957`. `auto` uses that palette on 24, 25, and 26 December (UTC), keeps Halloween on 31 October (UTC), and stays on the green graph every other day (2026-11-02).
 
+### Changed
+
+- Concrete palettes live in one catalog. Each entry has the palette name, its light and dark scales, and the UTC days `auto` selects it. Adding a holiday is that one entry; the name list and the rejection message are built from it. `auto` still uses Halloween on 31 October, Christmas on 24-26 December, and the green graph every other day, including 31 December, 1 January, and 29 February. The SVGs are unchanged (2026-11-03).
+
 ### Fixed
 
 - Fetching a contribution calendar no longer sends a ranged GraphQL query that GitHub rejects on every run. The profile window runs from the Sunday of the week one year ago through Saturday of this week, which is always longer than one year, so that query failed and the action retried the default collection. It now asks for the default collection directly. A shorter range that GitHub still rejects for spanning a year falls back the same way (2026-11-01).

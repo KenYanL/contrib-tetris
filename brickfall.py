@@ -72,21 +72,159 @@ CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+@dataclass(frozen=True)
+class PaletteSpec:
+    """One concrete palette: both themes, a short error-text phrase, and UTC days.
+
+    ``summary`` finishes "use <name> for <summary>" when a palette name is
+    rejected. ``auto_days`` is the UTC (month, day) pairs ``auto`` paints with
+    this palette. Empty means ``auto`` never selects it.
+    """
+
+    themes: dict[str, dict[str, object]]
+    summary: str
+    auto_days: tuple[tuple[int, int], ...] = ()
+
+
+# Concrete palettes in the order ``auto`` checks them. ``default`` is first
+# and is the fallback, so it lists no days. To add a holiday, append one
+# entry with its light and dark scales, the phrase for the error text, and
+# the UTC month-days it covers. Each month-day belongs to one palette.
+PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
+    ("default", PaletteSpec(PALETTES, "the usual green graph")),
+    (
+        "halloween",
+        PaletteSpec(HALLOWEEN_PALETTES, "GitHub's Halloween colors", ((10, 31),)),
+    ),
+    (
+        "christmas",
+        PaletteSpec(
+            CHRISTMAS_PALETTES,
+            "Coolors' popular Christmas palette",
+            ((12, 24), (12, 25), (12, 26)),
+        ),
+    ),
+)
+
+
+def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> None:
+    """Reject a catalog ``auto`` could not apply, before any SVG is drawn."""
+    if not catalog or catalog[0][0] != "default" or catalog[0][1].auto_days:
+        raise ValueError(
+            "the palette catalog must start with default, and default cannot list auto days. "
+            "default is the fallback for every other UTC day."
+        )
+    seen_names: set[str] = set()
+    seen_days: dict[tuple[int, int], str] = {}
+    for name, spec in catalog:
+        if not isinstance(name, str) or name.strip() == "" or name != name.strip():
+            raise ValueError(f"palette name {name!r} cannot be registered. Use a short name such as halloween.")
+        if name == "auto":
+            raise ValueError(
+                "palette name 'auto' is the date selector, not a concrete palette. "
+                "List the holiday under its own name and put its UTC days in auto_days."
+            )
+        if name in seen_names:
+            raise ValueError(f"palette name {name!r} is listed more than once.")
+        seen_names.add(name)
+        if not isinstance(spec.summary, str) or spec.summary.strip() == "":
+            raise ValueError(f"palette {name!r} needs a short summary for the error text.")
+        if set(spec.themes) != {"light", "dark"}:
+            raise ValueError(f"palette {name!r} needs a light theme and a dark theme.")
+        for theme, colors in spec.themes.items():
+            levels = colors.get("levels")
+            if not isinstance(levels, tuple) or len(levels) != 5:
+                raise ValueError(f"palette {name!r} {theme} needs five level colors.")
+            if "text" not in colors or "border" not in colors:
+                raise ValueError(f"palette {name!r} {theme} needs text and border colors.")
+        for month, day in spec.auto_days:
+            try:
+                # 2024 is a leap year, so 29 February is a real auto day.
+                date(2024, month, day)
+            except ValueError:
+                raise ValueError(
+                    f"palette {name!r} lists auto date {(month, day)!r}, which is not a calendar day. "
+                    "Use a real month and day, such as (10, 31)."
+                ) from None
+            previous = seen_days.get((month, day))
+            if previous is not None:
+                raise ValueError(
+                    f"auto date {(month, day)!r} is listed for {previous!r} and {name!r}. "
+                    "Each month-day belongs to one palette."
+                )
+            seen_days[(month, day)] = name
+
+
+_validate_palette_catalog(PALETTE_CATALOG)
+
 # Concrete palettes render_svg can paint. ``auto`` is resolved before this.
 PALETTE_TABLES: dict[str, dict[str, dict[str, object]]] = {
-    "default": PALETTES,
-    "halloween": HALLOWEEN_PALETTES,
-    "christmas": CHRISTMAS_PALETTES,
+    name: spec.themes for name, spec in PALETTE_CATALOG
 }
-PALETTE_NAMES = ("default", "halloween", "christmas", "auto")
-
-# Holidays ``auto`` paints, in priority order. Each entry is a concrete
-# palette and the UTC month-days it covers. Any other day stays the default
-# green graph. To add a holiday, append its palette and dates here.
-AUTO_HOLIDAYS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
-    ("halloween", ((10, 31),)),
-    ("christmas", ((12, 24), (12, 25), (12, 26))),
+PALETTE_NAMES = tuple(name for name, _spec in PALETTE_CATALOG) + ("auto",)
+# Dated rows of the catalog, in the same order ``auto`` checks them.
+AUTO_HOLIDAYS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = tuple(
+    (name, spec.auto_days) for name, spec in PALETTE_CATALOG if spec.auto_days
 )
+
+_MONTHS = (
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
+def format_auto_days(days: Sequence[tuple[int, int]]) -> str:
+    """Collapse UTC month-days into a phrase such as ``31 October`` or ``24-26 December``.
+
+    Consecutive days in one month become a range. Separate runs are joined
+    with ``and``.
+    """
+    if not days:
+        raise ValueError("auto days are empty")
+    groups: list[tuple[int, int, int]] = []
+    for month, day in sorted(days):
+        if groups and groups[-1][0] == month and groups[-1][2] + 1 == day:
+            groups[-1] = (month, groups[-1][1], day)
+        else:
+            groups.append((month, day, day))
+    parts: list[str] = []
+    for month, start, end in groups:
+        name = _MONTHS[month]
+        if start == end:
+            parts.append(f"{start} {name}")
+        else:
+            parts.append(f"{start}-{end} {name}")
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    return ", ".join(parts[:-1]) + ", and " + parts[-1]
+
+
+def palette_hint() -> str:
+    """Sentence appended when a palette name is rejected.
+
+    Built from ``PALETTE_CATALOG``, so a new holiday shows up in the error
+    without a second copy of its dates.
+    """
+    named = ", ".join(f"{name} for {spec.summary}" for name, spec in PALETTE_CATALOG)
+    auto = ", ".join(
+        f"{name} on {format_auto_days(spec.auto_days)} (UTC)"
+        for name, spec in PALETTE_CATALOG
+        if spec.auto_days
+    )
+    return f"Use {named}, or auto to use {auto}, and default every other day."
 
 LEVEL_NAMES = {
     "NONE": 0,
@@ -101,16 +239,15 @@ def resolve_palette(name: str, today: date) -> str:
     """Return the concrete palette for ``name`` on ``today``.
 
     ``default``, ``halloween``, and ``christmas`` are returned as given.
-    ``auto`` follows ``AUTO_HOLIDAYS``: halloween on 31 October, christmas
-    on 24-26 December, and ``default`` on every other day. ``today`` is the
-    calendar day to test. This does not read the clock; pass the current
-    UTC date when the caller means now.
+    ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October, christmas
+    on 24-26 December, and ``default`` on every other day, including
+    31 December and 1 January. ``today`` is the calendar day to test. This
+    does not read the clock; pass the current UTC date when the caller
+    means now.
     """
     if name == "auto":
         key = (today.month, today.day)
         for palette, days in AUTO_HOLIDAYS:
-            if palette not in PALETTE_TABLES:
-                raise ValueError(f"unknown palette {palette!r}")
             if key in days:
                 return palette
         return "default"
