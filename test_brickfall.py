@@ -26,9 +26,13 @@ from generate import (  # noqa: E402
     validate_output_path,
 )
 from brickfall import (  # noqa: E402
+    AUTO_HOLIDAYS,
     CHRISTMAS_PALETTES,
     HALLOWEEN_PALETTES,
     ORIENTATIONS,
+    PALETTE_CATALOG,
+    PALETTE_NAMES,
+    PALETTE_TABLES,
     PALETTES,
     SMALL_PIECES,
     TETROMINOES,
@@ -36,11 +40,15 @@ from brickfall import (  # noqa: E402
     CalendarParseError,
     Day,
     GraphQLError,
+    PaletteSpec,
     _graphql,
+    _validate_palette_catalog,
     calendar_from_json,
     calendar_to_json,
     coverage_errors,
     decompose,
+    format_auto_days,
+    palette_hint,
     QUERY,
     QUERY_DEFAULT,
     fetch_calendar,
@@ -1200,6 +1208,12 @@ class PaletteTests(unittest.TestCase):
     """
 
     def test_parse_palette_names(self) -> None:
+        hint = (
+            "Use default for the usual green graph, halloween for GitHub's Halloween "
+            "colors, christmas for Coolors' popular Christmas palette, or auto to use halloween "
+            "on 31 October (UTC), christmas on 24-26 December (UTC), and default every other day."
+        )
+        self.assertEqual(palette_hint(), hint)
         self.assertEqual(parse_palette("default"), "default")
         self.assertEqual(parse_palette(" Halloween "), "halloween")
         self.assertEqual(parse_palette(" Christmas "), "christmas")
@@ -1235,6 +1249,107 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(resolve_palette("christmas", date(2026, 12, 23)), "christmas")
         self.assertEqual(resolve_palette("christmas", date(2026, 11, 1)), "christmas")
         self.assertEqual(resolve_palette("default", date(2026, 12, 25)), "default")
+
+    def test_auto_palette_follows_the_catalog_across_the_year(self) -> None:
+        """Every UTC day of a common year and a leap year matches the catalog.
+
+        31 October is halloween. 24-26 December is christmas. The year
+        boundary stays green: 31 December and the next 1 January, and
+        29 February in a leap year.
+        """
+        self.assertEqual(
+            [(name, spec.auto_days) for name, spec in PALETTE_CATALOG],
+            [
+                ("default", ()),
+                ("halloween", ((10, 31),)),
+                ("christmas", ((12, 24), (12, 25), (12, 26))),
+            ],
+        )
+        self.assertEqual(PALETTE_NAMES, ("default", "halloween", "christmas", "auto"))
+        self.assertEqual(
+            AUTO_HOLIDAYS,
+            (
+                ("halloween", ((10, 31),)),
+                ("christmas", ((12, 24), (12, 25), (12, 26))),
+            ),
+        )
+        self.assertIs(PALETTE_TABLES["default"], PALETTES)
+        self.assertIs(PALETTE_TABLES["halloween"], HALLOWEEN_PALETTES)
+        self.assertIs(PALETTE_TABLES["christmas"], CHRISTMAS_PALETTES)
+        self.assertEqual(format_auto_days(((10, 31),)), "31 October")
+        self.assertEqual(format_auto_days(((12, 26), (12, 24), (12, 25))), "24-26 December")
+        self.assertEqual(
+            format_auto_days(((12, 24), (12, 26))),
+            "24 December and 26 December",
+        )
+        rules = {
+            (month, day): name
+            for name, spec in PALETTE_CATALOG
+            for month, day in spec.auto_days
+        }
+        for year in (2023, 2024):
+            day = date(year, 1, 1)
+            last = date(year, 12, 31)
+            while day <= last:
+                expected = rules.get((day.month, day.day), "default")
+                self.assertEqual(resolve_palette("auto", day), expected, day.isoformat())
+                for concrete in ("default", "halloween", "christmas"):
+                    self.assertEqual(resolve_palette(concrete, day), concrete, day.isoformat())
+                day += timedelta(days=1)
+        self.assertEqual(resolve_palette("auto", date(2024, 2, 29)), "default")
+        for year in (2020, 2023, 2024, 2026, 2028):
+            self.assertEqual(resolve_palette("auto", date(year, 12, 31)), "default")
+            self.assertEqual(resolve_palette("auto", date(year + 1, 1, 1)), "default")
+
+    def test_catalog_rejects_a_holiday_that_cannot_be_selected(self) -> None:
+        """Overlapping days, impossible dates, and a dated default fail while loading."""
+        default = PALETTE_CATALOG[0][1]
+        halloween = PALETTE_CATALOG[1][1]
+        christmas = PALETTE_CATALOG[2][1]
+        overlapping = PaletteSpec(christmas.themes, christmas.summary, ((10, 31),))
+        with self.assertRaises(ValueError) as caught:
+            _validate_palette_catalog(
+                (
+                    ("default", default),
+                    ("halloween", halloween),
+                    ("christmas", overlapping),
+                )
+            )
+        message = str(caught.exception)
+        self.assertIn("(10, 31)", message)
+        self.assertIn("halloween", message)
+        self.assertIn("christmas", message)
+        self.assertIn("one palette", message)
+
+        impossible = PaletteSpec(halloween.themes, halloween.summary, ((2, 30),))
+        with self.assertRaises(ValueError) as caught:
+            _validate_palette_catalog((("default", default), ("halloween", impossible)))
+        self.assertIn("(2, 30)", str(caught.exception))
+        self.assertIn("not a calendar day", str(caught.exception))
+
+        # 29 February exists, so a leap-day holiday is a real date.
+        leap_day = PaletteSpec(halloween.themes, halloween.summary, ((2, 29),))
+        _validate_palette_catalog((("default", default), ("halloween", leap_day)))
+
+        dated_default = PaletteSpec(default.themes, default.summary, ((1, 1),))
+        with self.assertRaises(ValueError) as caught:
+            _validate_palette_catalog((("default", dated_default),))
+        self.assertIn("default", str(caught.exception))
+
+        with self.assertRaises(ValueError) as caught:
+            _validate_palette_catalog((("default", default), ("auto", halloween)))
+        self.assertIn("selector", str(caught.exception))
+
+    def test_help_names_every_catalog_auto_date(self) -> None:
+        proc = _run_generate(["--help"], env=os.environ.copy())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # argparse wraps the help line, so compare the words with the breaks gone.
+        text = " ".join(proc.stdout.split())
+        for name, spec in PALETTE_CATALOG:
+            self.assertIn(name, text)
+            if spec.auto_days:
+                self.assertIn(format_auto_days(spec.auto_days), text)
+        self.assertIn("auto", text)
 
     def test_halloween_colors_replace_green_levels_and_default_svg_is_unchanged(self) -> None:
         """Primer Halloween levels 1-4, with the default empty cell left in place.
