@@ -72,6 +72,27 @@ CHRISTMAS_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+# Color Hunt gold gradient palette
+# (https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00):
+# f9e6a8, f2a900, cc6f00, 4d2a00.
+# Level 0 keeps the neutral GitHub empty cell. The other four colors
+# are ordered by contrast against that background. Text and the cell
+# border match the default theme.
+# Light: #eff2f5 #f9e6a8 #f2a900 #cc6f00 #4d2a00
+# Dark:  #151b23 #4d2a00 #cc6f00 #f2a900 #f9e6a8
+NEWYEAR_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#f9e6a8", "#f2a900", "#cc6f00", "#4d2a00"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#4d2a00", "#cc6f00", "#f2a900", "#f9e6a8"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
 @dataclass(frozen=True)
 class PaletteSpec:
     """One concrete palette: both themes, a short error-text phrase, and UTC days.
@@ -102,6 +123,14 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
             CHRISTMAS_PALETTES,
             "Coolors' popular Christmas palette",
             ((12, 24), (12, 25), (12, 26)),
+        ),
+    ),
+    (
+        "newyear",
+        PaletteSpec(
+            NEWYEAR_PALETTES,
+            "Color Hunt's New Year gold palette",
+            ((1, 1),),
         ),
     ),
 )
@@ -238,12 +267,12 @@ LEVEL_NAMES = {
 def resolve_palette(name: str, today: date) -> str:
     """Return the concrete palette for ``name`` on ``today``.
 
-    ``default``, ``halloween``, and ``christmas`` are returned as given.
-    ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October, christmas
-    on 24-26 December, and ``default`` on every other day, including
-    31 December and 1 January. ``today`` is the calendar day to test. This
-    does not read the clock; pass the current UTC date when the caller
-    means now.
+    ``default``, ``halloween``, ``christmas``, and ``newyear`` are returned
+    as given. ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October,
+    christmas on 24-26 December, newyear on 1 January, and ``default`` on
+    every other day, including 31 December and 2 January. ``today`` is the
+    calendar day to test. This does not read the clock; pass the current
+    UTC date when the caller means now.
     """
     if name == "auto":
         key = (today.month, today.day)

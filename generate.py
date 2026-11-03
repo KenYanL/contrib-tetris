@@ -8,6 +8,7 @@ Examples:
       --light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg --seed 1
   python3 generate.py --input sample/contributions.json --out dist --palette halloween
   python3 generate.py --input sample/contributions.json --out dist --palette christmas
+  python3 generate.py --input sample/contributions.json --out dist --palette newyear
   python3 generate.py --input sample/contributions.json --out dist --palette auto
 """
 
@@ -88,10 +89,11 @@ def parse_palette(raw: object) -> str:
     """Return a palette name, or raise InputError naming palette.
 
     ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
-    colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette. ``auto``
-    uses halloween on 31 October (UTC), christmas on 24-26 December (UTC),
-    and the green graph every other day. The sentence comes from
-    ``PALETTE_CATALOG``.
+    colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette.
+    ``newyear`` uses Color Hunt's New Year gold palette. ``auto`` uses halloween
+    on 31 October (UTC), christmas on 24-26 December (UTC), newyear on
+    1 January (UTC), and the green graph every other day. The sentence comes
+    from ``PALETTE_CATALOG``.
     """
     hint = palette_hint()
     if not isinstance(raw, str):
@@ -245,8 +247,9 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
             "default is the usual green graph. "
             "halloween uses GitHub's Halloween graph colors. "
             "christmas uses Coolors' popular Christmas palette. "
+            "newyear uses Color Hunt's New Year gold palette. "
             "auto uses halloween on 31 October (UTC), christmas on 24-26 December (UTC), "
-            "and default every other day"
+            "newyear on 1 January (UTC), and default every other day"
         ),
     )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
