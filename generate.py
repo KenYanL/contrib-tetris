@@ -188,6 +188,71 @@ def _same_output(left: Path, right: Path) -> bool:
     return key(left) == key(right)
 
 
+def _blocking_file(path: Path) -> Path | None:
+    """Return an existing file that stops ``path`` from being created.
+
+    Ancestors that do not exist yet are walked. An existing directory does
+    not block its children. ``path`` itself is not inspected.
+    """
+    current = path.parent
+    seen: set[Path] = set()
+    while current not in seen:
+        seen.add(current)
+        if current.exists():
+            if current.is_dir():
+                return None
+            return current
+        if current.parent == current:
+            return None
+        current = current.parent
+    return None
+
+
+def _ensure_directory(path: Path) -> None:
+    """``--out`` has to be a directory, whether or not it exists yet."""
+    shown = str(path)
+    if path.exists() and not path.is_dir():
+        raise InputError(
+            f"--out {shown!r} is a file, not a directory. "
+            "Pass a directory, for example dist."
+        )
+    blocker = _blocking_file(path)
+    if blocker is not None:
+        raise InputError(
+            f"--out {shown!r} cannot be created because {str(blocker)!r} is a file. "
+            "Pass a directory, for example dist."
+        )
+
+
+def _ensure_writable_file(path: Path, *, label: str, hint: str) -> None:
+    """A file output cannot be an existing directory or sit under a file."""
+    shown = str(path)
+    if path.is_dir():
+        raise InputError(f"{label} is {shown!r}, which is a directory. {hint}")
+    blocker = _blocking_file(path)
+    if blocker is not None:
+        raise InputError(
+            f"{label} is {shown!r}, which cannot be written because {str(blocker)!r} is a file. {hint}"
+        )
+
+
+def _reject_dump_collision(dump: Path, out: Path | None, outputs: dict[str, Path]) -> None:
+    """``--dump-json`` must not be the output directory or either SVG."""
+    shown = str(dump)
+    if out is not None and _same_output(dump, out):
+        raise InputError(
+            f"--dump-json {shown!r} is the same path as --out. "
+            "--out is the directory the SVGs are written to. "
+            "Pass a file inside it, for example dist/contributions.json."
+        )
+    for kind, path in outputs.items():
+        if _same_output(dump, path):
+            raise InputError(
+                f"--dump-json {shown!r} is the same file as the {kind} SVG ({path}). "
+                "Pass a different file, for example dist/contributions.json."
+            )
+
+
 def _checked_token(token: str | None) -> str:
     if token is None or token.strip() == "":
         raise InputError(
@@ -214,7 +279,8 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
         type=Path,
         help=(
             "Write the normalized calendar JSON (count and integer level) to this path. "
-            "That file can be passed back to --input"
+            "That file can be passed back to --input. "
+            "It must be a file, and it must not be the --out directory or either SVG"
         ),
     )
     parser.add_argument("--out", type=Path, help="Directory for tetris-contrib.svg and tetris-contrib-dark.svg")
@@ -262,6 +328,7 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
         day = today if today is not None else datetime.now(timezone.utc).date()
         palette = resolve_palette(palette_name, day)
         relative = _relative_paths_required()
+        used_out: Path | None = None
         if args.light is not None or args.dark is not None:
             if args.light is None or args.dark is None:
                 raise InputError(
@@ -289,6 +356,8 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
                 )
             outputs = {"light": light, "dark": dark}
         elif args.out:
+            _ensure_directory(args.out)
+            used_out = args.out
             outputs = {
                 "light": args.out / "tetris-contrib.svg",
                 "dark": args.out / "tetris-contrib-dark.svg",
@@ -298,6 +367,26 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
                 "pass an output directory with --out, or both svg_light_path (--light) and "
                 "svg_dark_path (--dark). For example --out dist, or "
                 "--light dist/tetris-contrib.svg --dark dist/tetris-contrib-dark.svg."
+            )
+        for theme, path in outputs.items():
+            if used_out is None:
+                if theme == "light":
+                    label = "svg_light_path (--light)"
+                    example = "dist/tetris-contrib.svg"
+                else:
+                    label = "svg_dark_path (--dark)"
+                    example = "dist/tetris-contrib-dark.svg"
+                hint = f"Pass a file path ending in .svg, for example {example}."
+            else:
+                label = "the light SVG" if theme == "light" else "the dark SVG"
+                hint = "Pass --out as a directory, for example dist."
+            _ensure_writable_file(path, label=label, hint=hint)
+        if args.dump_json is not None:
+            _reject_dump_collision(args.dump_json, used_out, outputs)
+            _ensure_writable_file(
+                args.dump_json,
+                label="--dump-json",
+                hint="Pass a file path, for example dist/contributions.json.",
             )
 
         if args.input:

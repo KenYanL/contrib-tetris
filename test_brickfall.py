@@ -807,6 +807,139 @@ class InputValidationTests(unittest.TestCase):
             self.assertIn("relative", absolute.stderr)
             self.assertFalse((Path(tmp) / "abs.svg").exists())
 
+    def test_cli_rejects_outputs_that_cannot_be_written(self) -> None:
+        """A path that cannot be written fails before any SVG or JSON is created.
+
+        ``--out`` used to raise FileExistsError when it named a file, and
+        ``--dump-json`` used to raise IsADirectoryError or be overwritten by
+        the light SVG. An existing SVG inside a real directory is replaced.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = os.environ.copy()
+            blocker = root / "not-a-dir"
+            blocker.write_text("keep", encoding="utf-8")
+
+            def rejected(args: list[str], *needles: str) -> None:
+                proc = _run_generate(args, env=env)
+                self.assertEqual(proc.returncode, 1, proc.stderr)
+                self.assertIn("contrib-tetris:", proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                for needle in needles:
+                    self.assertIn(needle, proc.stderr)
+
+            rejected(
+                ["--input", str(SAMPLE), "--out", str(blocker)],
+                "--out",
+                str(blocker),
+                "not a directory",
+                "dist",
+            )
+            self.assertEqual(blocker.read_text(encoding="utf-8"), "keep")
+
+            rejected(
+                ["--input", str(SAMPLE), "--out", str(blocker / "sub")],
+                "--out",
+                str(blocker),
+                "is a file",
+                "dist",
+            )
+            self.assertFalse((blocker / "sub").exists())
+
+            calendar_dir = root / "calendar-dir"
+            calendar_dir.mkdir()
+            svg_out = root / "svg-out"
+            rejected(
+                ["--input", str(SAMPLE), "--out", str(svg_out), "--dump-json", str(calendar_dir)],
+                "--dump-json",
+                str(calendar_dir),
+                "is a directory",
+                "dist/contributions.json",
+            )
+            self.assertFalse(svg_out.exists())
+
+            same = root / "same-out"
+            rejected(
+                ["--input", str(SAMPLE), "--out", str(same), "--dump-json", str(same)],
+                "--dump-json",
+                str(same),
+                "same path as --out",
+                "dist/contributions.json",
+            )
+            self.assertFalse(same.exists())
+
+            clash = root / "clash"
+            rejected(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--out",
+                    str(clash),
+                    "--dump-json",
+                    str(clash / "tetris-contrib.svg"),
+                ],
+                "--dump-json",
+                "same file as the light SVG",
+                "dist/contributions.json",
+            )
+            self.assertFalse(clash.exists())
+
+            light_dir = root / "light.svg"
+            light_dir.mkdir()
+            dark = root / "dark.svg"
+            rejected(
+                ["--input", str(SAMPLE), "--light", str(light_dir), "--dark", str(dark)],
+                "svg_light_path",
+                str(light_dir),
+                "is a directory",
+                "dist/tetris-contrib.svg",
+            )
+            self.assertFalse(dark.exists())
+
+            rejected(
+                ["--input", str(SAMPLE), "--light", str(blocker / "light.svg"), "--dark", str(dark)],
+                "svg_light_path",
+                str(blocker),
+                "is a file",
+                "dist/tetris-contrib.svg",
+            )
+            self.assertFalse(dark.exists())
+            self.assertEqual(blocker.read_text(encoding="utf-8"), "keep")
+
+            nested_dump = blocker / "calendar.json"
+            ok_out = root / "ok-out"
+            rejected(
+                ["--input", str(SAMPLE), "--out", str(ok_out), "--dump-json", str(nested_dump)],
+                "--dump-json",
+                str(blocker),
+                "is a file",
+                "dist/contributions.json",
+            )
+            self.assertFalse(ok_out.exists())
+            self.assertFalse(nested_dump.exists())
+
+            ready = root / "ready"
+            ready.mkdir()
+            (ready / "tetris-contrib.svg").write_text("old", encoding="utf-8")
+            (ready / "tetris-contrib-dark.svg").write_text("old", encoding="utf-8")
+            replaced = _run_generate(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--out",
+                    str(ready),
+                    "--dump-json",
+                    str(ready / "calendar.json"),
+                ],
+                env=env,
+            )
+            self.assertEqual(replaced.returncode, 0, replaced.stderr)
+            self.assertTrue((ready / "tetris-contrib.svg").read_text(encoding="utf-8").startswith("<?xml"))
+            self.assertTrue((ready / "tetris-contrib-dark.svg").read_text(encoding="utf-8").startswith("<?xml"))
+            saved = (ready / "calendar.json").read_text(encoding="utf-8")
+            self.assertIn('"level"', saved)
+            self.assertNotIn("<?xml", saved)
+
     def test_cli_rejects_bad_speed_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             light = Path(tmp) / "light.svg"
