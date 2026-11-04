@@ -53,7 +53,7 @@ jobs:
           # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token
           # seed: "1"                            # optional; omit for the stable pack
           # speed: "1.0"                         # optional; 2 plays twice as fast, 0.5 at half speed
-          # palette: default                     # optional; halloween, christmas, newyear, or auto
+          # palette: default                     # optional; halloween, christmas, newyear, lunarnewyear, or auto
 
       - name: Publish SVGs to the output branch
         uses: crazy-max/ghaction-github-pages@v5
@@ -86,9 +86,9 @@ The public contribution calendar is readable with the default workflow token.
 | `token` | no | workflow token | Token for the GraphQL contribution query. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 | `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
-| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `newyear` uses [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), New Year's Day on 1 January (UTC), and green every other UTC day. |
+| `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `newyear` uses [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00). `lunarnewyear` uses [SchemeColor's Chinese Gold & Red palette](https://www.schemecolor.com/chinese-gold-red.php). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), New Year's Day on 1 January (UTC), Lunar New Year on the festival day and the two following UTC days for 2026-2035, and green every other UTC day. A year outside that table stays green. |
 
-Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, `newyear`, or `auto`.
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, `newyear`, `lunarnewyear`, or `auto`.
 
 ### Outputs
 
@@ -139,7 +139,9 @@ Colors follow the contribution graph shipped on github.com. The default palette 
 
 `palette: newyear` (CLI: `--palette newyear`) paints both SVGs from [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00) (`#f9e6a8`, `#f2a900`, `#cc6f00`, `#4d2a00`). Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. The other four colors are ordered by contrast against that background. Light `#eff2f5 #f9e6a8 #f2a900 #cc6f00 #4d2a00`, dark `#151b23 #4d2a00 #cc6f00 #f2a900 #f9e6a8`.
 
-`palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, the New Year colors on 1 January UTC, and the default green palette on every other UTC date, including 31 December and 2 January. The check is that calendar day in UTC, not the runner's local zone. Omit `palette` to keep the green graph on every day, including those holidays.
+`palette: lunarnewyear` (CLI: `--palette lunarnewyear`) paints both SVGs from [SchemeColor's Chinese Gold & Red palette](https://www.schemecolor.com/chinese-gold-red.php) (`#960316`, `#ebc862`, `#e4b034`, `#ca9d08`, `#c50100`, `#830010`). Scarlett `#960316` and Chinese Gold `#ca9d08` are dropped as near-duplicates. Level 0 again keeps `--contribution-default-bgColor-0`, so empty cells stay the neutral GitHub background and the graph stays readable. The other four colors run from lightest to darkest. Light `#eff2f5 #ebc862 #e4b034 #c50100 #830010`, dark `#151b23 #830010 #c50100 #e4b034 #ebc862`.
+
+`palette: auto` (CLI: `--palette auto`) uses the Halloween colors on 31 October UTC, the Christmas colors on 24, 25, and 26 December UTC, the New Year colors on 1 January UTC, the Lunar New Year colors on the festival day and the two following UTC days, and the default green palette on every other UTC date, including 31 December and 2 January. Lunar New Year does not fall on the same Gregorian day each year, so those days come from a fixed table of UTC dates for 2026-2035. The dates are the first day of the first lunar month in the [Hong Kong Observatory Gregorian-Lunar conversion tables](https://www.hko.gov.hk/en/gts/time/conversion.htm): 2026-02-17, 2027-02-06, 2028-01-26, 2029-02-13, 2030-02-03, 2031-01-23, 2032-02-11, 2033-01-31, 2034-02-19, and 2035-02-08. Christmas covers three UTC days, so Lunar New Year uses that same length: the tabulated day and the next two (17-19 February 2026, and 31 January through 2 February 2033 when the festival is on 31 January). 1 January stays the New Year palette. A year that is not in the table, such as 2025 or 2036, stays on the green graph for Lunar New Year. The check is that calendar day in UTC: the Gregorian date in the Observatory table, on the UTC clock. Omit `palette` to keep the green graph on every day, including those holidays.
 
 ## Develop
 
@@ -152,10 +154,11 @@ python3 generate.py --username KenYanL --token "$GITHUB_TOKEN" --out dist
 python3 generate.py --input sample/contributions.json --out dist --palette halloween
 python3 generate.py --input sample/contributions.json --out dist --palette christmas
 python3 generate.py --input sample/contributions.json --out dist --palette newyear
+python3 generate.py --input sample/contributions.json --out dist --palette lunarnewyear
 python3 generate.py --input sample/contributions.json --out dist --palette auto
 ```
 
-`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December. New Year's Day is 1 January.
+`--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December. New Year's Day is 1 January. Lunar New Year is the tabulated UTC date and the two following days, for 2026-2035 only.
 
 `.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders KenYanL's calendar and writes:
 

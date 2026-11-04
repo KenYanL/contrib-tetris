@@ -93,24 +93,90 @@ NEWYEAR_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+# SchemeColor's Chinese Gold & Red
+# (https://www.schemecolor.com/chinese-gold-red.php):
+# 960316, ebc862, e4b034, ca9d08, c50100, 830010.
+# Scarlett (#960316) and Chinese Gold (#ca9d08) are dropped as
+# near-duplicates. Level 0 keeps the neutral GitHub empty cell. The
+# other four colors run from lightest to darkest on the light graph
+# and the reverse on the dark graph. Text and the cell border match
+# the default theme.
+# Light: #eff2f5 #ebc862 #e4b034 #c50100 #830010
+# Dark:  #151b23 #830010 #c50100 #e4b034 #ebc862
+LUNAR_NEW_YEAR_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#ebc862", "#e4b034", "#c50100", "#830010"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#830010", "#c50100", "#e4b034", "#ebc862"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
+# First day of Lunar New Year (春节) as a UTC calendar date.
+# These are the first day of the first lunar month in the Hong Kong
+# Observatory Gregorian-Lunar conversion tables
+# (https://www.hko.gov.hk/en/gts/time/conversion.htm). The same days are
+# listed for Chinese New Year by
+# https://en.wikipedia.org/wiki/Chinese_New_Year and
+# https://www.timeanddate.com/holidays/china/spring-festival.
+# ``auto`` does not shift them for China Standard Time: the UTC calendar
+# day equal to this Gregorian date is the festival day. A year that is
+# not in the table is never lunarnewyear.
+LUNAR_NEW_YEAR_DATES: tuple[date, ...] = (
+    date(2026, 2, 17),
+    date(2027, 2, 6),
+    date(2028, 1, 26),
+    date(2029, 2, 13),
+    date(2030, 2, 3),
+    date(2031, 1, 23),
+    date(2032, 2, 11),
+    date(2033, 1, 31),
+    date(2034, 2, 19),
+    date(2035, 2, 8),
+)
+# Christmas covers three UTC days (24-26 December). Lunar New Year uses
+# that same length: the tabulated day and the two UTC days after it.
+# The earliest tabulated day is 23 January, so the window never includes
+# 1 January and does not overlap ``newyear``.
+LUNAR_NEW_YEAR_SPAN_DAYS = 3
+
 @dataclass(frozen=True)
 class PaletteSpec:
     """One concrete palette: both themes, a short error-text phrase, and UTC days.
 
     ``summary`` finishes "use <name> for <summary>" when a palette name is
     rejected. ``auto_days`` is the UTC (month, day) pairs ``auto`` paints with
-    this palette. Empty means ``auto`` never selects it.
+    this palette every year. ``auto_dates`` is the UTC calendar dates it
+    paints in particular years, for a holiday that moves. Empty means
+    ``auto`` never selects that field.
     """
 
     themes: dict[str, dict[str, object]]
     summary: str
     auto_days: tuple[tuple[int, int], ...] = ()
+    auto_dates: tuple[date, ...] = ()
+
+
+def _holiday_window(anchors: tuple[date, ...], days: int) -> tuple[date, ...]:
+    """Each anchor date plus the following UTC days, ``days`` long in all.
+
+    ``days`` includes the anchor. A span of 3 is the anchor and the next
+    two UTC days, the same length as 24-26 December.
+    """
+    if days < 1:
+        raise ValueError("a holiday window covers at least one day")
+    return tuple(anchor + timedelta(days=offset) for anchor in anchors for offset in range(days))
 
 
 # Concrete palettes in the order ``auto`` checks them. ``default`` is first
 # and is the fallback, so it lists no days. To add a holiday, append one
 # entry with its light and dark scales, the phrase for the error text, and
-# the UTC month-days it covers. Each month-day belongs to one palette.
+# either the UTC month-days it covers every year or the UTC dates for a
+# holiday that moves. Each calendar day belongs to one palette.
 PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
     ("default", PaletteSpec(PALETTES, "the usual green graph")),
     (
@@ -133,18 +199,32 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
             ((1, 1),),
         ),
     ),
+    (
+        "lunarnewyear",
+        PaletteSpec(
+            LUNAR_NEW_YEAR_PALETTES,
+            "SchemeColor's Chinese gold and red palette",
+            auto_dates=_holiday_window(LUNAR_NEW_YEAR_DATES, LUNAR_NEW_YEAR_SPAN_DAYS),
+        ),
+    ),
 )
 
 
 def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> None:
     """Reject a catalog ``auto`` could not apply, before any SVG is drawn."""
-    if not catalog or catalog[0][0] != "default" or catalog[0][1].auto_days:
+    if (
+        not catalog
+        or catalog[0][0] != "default"
+        or catalog[0][1].auto_days
+        or catalog[0][1].auto_dates
+    ):
         raise ValueError(
-            "the palette catalog must start with default, and default cannot list auto days. "
-            "default is the fallback for every other UTC day."
+            "the palette catalog must start with default, and default cannot list auto days "
+            "or auto dates. default is the fallback for every other UTC day."
         )
     seen_names: set[str] = set()
     seen_days: dict[tuple[int, int], str] = {}
+    seen_dates: dict[date, str] = {}
     for name, spec in catalog:
         if not isinstance(name, str) or name.strip() == "" or name != name.strip():
             raise ValueError(f"palette name {name!r} cannot be registered. Use a short name such as halloween.")
@@ -181,7 +261,32 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
                     f"auto date {(month, day)!r} is listed for {previous!r} and {name!r}. "
                     "Each month-day belongs to one palette."
                 )
+            for when, owner in seen_dates.items():
+                if (when.month, when.day) == (month, day) and owner != name:
+                    raise ValueError(
+                        f"auto date {when.isoformat()} is listed for {owner!r} and {(month, day)!r} "
+                        f"repeats every year for {name!r}. Each calendar day belongs to one palette."
+                    )
             seen_days[(month, day)] = name
+        for when in spec.auto_dates:
+            if type(when) is not date:
+                raise ValueError(
+                    f"palette {name!r} lists auto date {when!r}, which is not a calendar date. "
+                    "Use a datetime.date, such as date(2026, 2, 17)."
+                )
+            previous_date = seen_dates.get(when)
+            if previous_date is not None:
+                raise ValueError(
+                    f"auto date {when.isoformat()} is listed for {previous_date!r} and {name!r}. "
+                    "Each calendar day belongs to one palette."
+                )
+            owner = seen_days.get((when.month, when.day))
+            if owner is not None and owner != name:
+                raise ValueError(
+                    f"auto date {when.isoformat()} is listed for {name!r} and {(when.month, when.day)!r} "
+                    f"repeats every year for {owner!r}. Each calendar day belongs to one palette."
+                )
+            seen_dates[when] = name
 
 
 _validate_palette_catalog(PALETTE_CATALOG)
@@ -192,8 +297,11 @@ PALETTE_TABLES: dict[str, dict[str, dict[str, object]]] = {
 }
 PALETTE_NAMES = tuple(name for name, _spec in PALETTE_CATALOG) + ("auto",)
 # Dated rows of the catalog, in the same order ``auto`` checks them.
-AUTO_HOLIDAYS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = tuple(
-    (name, spec.auto_days) for name, spec in PALETTE_CATALOG if spec.auto_days
+# The third item is empty for a holiday that repeats every year.
+AUTO_HOLIDAYS: tuple[tuple[str, tuple[tuple[int, int], ...], tuple[date, ...]], ...] = tuple(
+    (name, spec.auto_days, spec.auto_dates)
+    for name, spec in PALETTE_CATALOG
+    if spec.auto_days or spec.auto_dates
 )
 
 _MONTHS = (
@@ -211,6 +319,15 @@ _MONTHS = (
     "November",
     "December",
 )
+
+
+def _join_phrases(parts: Sequence[str]) -> str:
+    """Join holiday phrases the way the error text lists them."""
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    return ", ".join(parts[:-1]) + ", and " + parts[-1]
 
 
 def format_auto_days(days: Sequence[tuple[int, int]]) -> str:
@@ -234,11 +351,41 @@ def format_auto_days(days: Sequence[tuple[int, int]]) -> str:
             parts.append(f"{start} {name}")
         else:
             parts.append(f"{start}-{end} {name}")
-    if len(parts) == 1:
-        return parts[0]
-    if len(parts) == 2:
-        return f"{parts[0]} and {parts[1]}"
-    return ", ".join(parts[:-1]) + ", and " + parts[-1]
+    return _join_phrases(parts)
+
+
+def format_auto_dates(dates: Sequence[date]) -> str:
+    """Collapse UTC dates into a phrase such as ``17-19 February 2026``.
+
+    Consecutive days become one range. A range that stays in one month is
+    ``17-19 February 2026``. A range that crosses a month is
+    ``31 January-2 February 2033``. Separate runs are joined with ``and``.
+    """
+    if not dates:
+        raise ValueError("auto dates are empty")
+    ordered = sorted(dates)
+    runs: list[tuple[date, date]] = []
+    for when in ordered:
+        if runs and runs[-1][1] + timedelta(days=1) == when:
+            runs[-1] = (runs[-1][0], when)
+        else:
+            runs.append((when, when))
+    parts: list[str] = []
+    for start, end in runs:
+        if start == end:
+            parts.append(f"{start.day} {_MONTHS[start.month]} {start.year}")
+        elif start.month == end.month and start.year == end.year:
+            parts.append(f"{start.day}-{end.day} {_MONTHS[start.month]} {start.year}")
+        elif start.year == end.year:
+            parts.append(
+                f"{start.day} {_MONTHS[start.month]}-{end.day} {_MONTHS[end.month]} {end.year}"
+            )
+        else:
+            parts.append(
+                f"{start.day} {_MONTHS[start.month]} {start.year}"
+                f"-{end.day} {_MONTHS[end.month]} {end.year}"
+            )
+    return _join_phrases(parts)
 
 
 def palette_hint() -> str:
@@ -248,12 +395,13 @@ def palette_hint() -> str:
     without a second copy of its dates.
     """
     named = ", ".join(f"{name} for {spec.summary}" for name, spec in PALETTE_CATALOG)
-    auto = ", ".join(
-        f"{name} on {format_auto_days(spec.auto_days)} (UTC)"
-        for name, spec in PALETTE_CATALOG
-        if spec.auto_days
-    )
-    return f"Use {named}, or auto to use {auto}, and default every other day."
+    auto_parts: list[str] = []
+    for name, spec in PALETTE_CATALOG:
+        if spec.auto_days:
+            auto_parts.append(f"{name} on {format_auto_days(spec.auto_days)} (UTC)")
+        if spec.auto_dates:
+            auto_parts.append(f"{name} on {format_auto_dates(spec.auto_dates)} (UTC)")
+    return f"Use {named}, or auto to use {', '.join(auto_parts)}, and default every other day."
 
 LEVEL_NAMES = {
     "NONE": 0,
@@ -267,17 +415,20 @@ LEVEL_NAMES = {
 def resolve_palette(name: str, today: date) -> str:
     """Return the concrete palette for ``name`` on ``today``.
 
-    ``default``, ``halloween``, ``christmas``, and ``newyear`` are returned
-    as given. ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October,
-    christmas on 24-26 December, newyear on 1 January, and ``default`` on
-    every other day, including 31 December and 2 January. ``today`` is the
+    ``default``, ``halloween``, ``christmas``, ``newyear``, and
+    ``lunarnewyear`` are returned as given. ``auto`` follows
+    ``PALETTE_CATALOG``: halloween on 31 October, christmas on 24-26
+    December, newyear on 1 January, and lunarnewyear on each tabulated
+    Lunar New Year date plus the next two UTC days (2026-2035). Every
+    other day is ``default``, including 31 December, 2 January, and a
+    Lunar New Year in a year the table does not list. ``today`` is the
     calendar day to test. This does not read the clock; pass the current
     UTC date when the caller means now.
     """
     if name == "auto":
         key = (today.month, today.day)
-        for palette, days in AUTO_HOLIDAYS:
-            if key in days:
+        for palette, days, dates in AUTO_HOLIDAYS:
+            if key in days or today in dates:
                 return palette
         return "default"
     if name not in PALETTE_TABLES:
