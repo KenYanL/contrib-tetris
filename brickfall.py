@@ -93,22 +93,24 @@ NEWYEAR_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
-# Color Hunt Lunar New Year palette
-# (https://colorhunt.co/palette/fef3e2fab12ffa812fdd0303):
-# fef3e2, fab12f, fa812f, dd0303.
-# Level 0 keeps the neutral GitHub empty cell. The other four colors
-# run from lightest to darkest on the light graph and the reverse on
-# the dark graph. Text and the cell border match the default theme.
-# Light: #eff2f5 #fef3e2 #fab12f #fa812f #dd0303
-# Dark:  #151b23 #dd0303 #fa812f #fab12f #fef3e2
+# SchemeColor's Chinese Gold & Red
+# (https://www.schemecolor.com/chinese-gold-red.php):
+# 960316, ebc862, e4b034, ca9d08, c50100, 830010.
+# Scarlett (#960316) and Chinese Gold (#ca9d08) are dropped as
+# near-duplicates. Level 0 keeps the neutral GitHub empty cell. The
+# other four colors run from lightest to darkest on the light graph
+# and the reverse on the dark graph. Text and the cell border match
+# the default theme.
+# Light: #eff2f5 #ebc862 #e4b034 #c50100 #830010
+# Dark:  #151b23 #830010 #c50100 #e4b034 #ebc862
 LUNAR_NEW_YEAR_PALETTES: dict[str, dict[str, object]] = {
     "light": {
-        "levels": ("#eff2f5", "#fef3e2", "#fab12f", "#fa812f", "#dd0303"),
+        "levels": ("#eff2f5", "#ebc862", "#e4b034", "#c50100", "#830010"),
         "text": "#59636e",
         "border": "rgba(31,35,40,0.06)",
     },
     "dark": {
-        "levels": ("#151b23", "#dd0303", "#fa812f", "#fab12f", "#fef3e2"),
+        "levels": ("#151b23", "#830010", "#c50100", "#e4b034", "#ebc862"),
         "text": "#9198a1",
         "border": "rgba(240,246,252,0.05)",
     },
@@ -201,7 +203,7 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
         "lunarnewyear",
         PaletteSpec(
             LUNAR_NEW_YEAR_PALETTES,
-            "Color Hunt's Lunar New Year palette",
+            "SchemeColor's Chinese gold and red palette",
             auto_dates=_holiday_window(LUNAR_NEW_YEAR_DATES, LUNAR_NEW_YEAR_SPAN_DAYS),
         ),
     ),

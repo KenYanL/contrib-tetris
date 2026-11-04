@@ -1231,8 +1231,8 @@ class PaletteTests(unittest.TestCase):
         hint = (
             "Use default for the usual green graph, halloween for GitHub's Halloween "
             "colors, christmas for Coolors' popular Christmas palette, newyear for "
-            "Color Hunt's New Year gold palette, lunarnewyear for Color Hunt's "
-            "Lunar New Year palette, or auto to use halloween "
+            "Color Hunt's New Year gold palette, lunarnewyear for SchemeColor's "
+            "Chinese gold and red palette, or auto to use halloween "
             "on 31 October (UTC), christmas on 24-26 December (UTC), newyear on "
             "1 January (UTC), lunarnewyear on "
             + lunar_days
@@ -1647,20 +1647,21 @@ class PaletteTests(unittest.TestCase):
                 self.assertNotEqual(gold[level], CHRISTMAS_PALETTES[theme]["levels"][level])
             self.assertIn('href="#b' + theme[0], newyear)
 
-    def test_lunar_new_year_colors_are_the_color_hunt_scale(self) -> None:
-        """Color Hunt Lunar New Year levels 1-4, lightest to darkest.
+    def test_lunar_new_year_colors_are_the_schemecolor_gold_and_red(self) -> None:
+        """SchemeColor Chinese Gold & Red levels 1-4, lightest to darkest.
 
-        The four source colors are used exactly. Light runs lightest to
-        darkest and dark runs the other way. Level 0 stays the empty cell.
-        The other holiday colors stay off this graph.
+        The four kept source colors are used exactly. Scarlett and Chinese
+        Gold are not in the scale. Light runs lightest to darkest and dark
+        runs the other way. Level 0 stays the empty cell. The other holiday
+        colors stay off this graph.
         """
         calendar = _tiny_calendar()
         pieces = pieces_for_calendar(calendar)
         expected = {
-            "light": ("#eff2f5", "#fef3e2", "#fab12f", "#fa812f", "#dd0303"),
-            "dark": ("#151b23", "#dd0303", "#fa812f", "#fab12f", "#fef3e2"),
+            "light": ("#eff2f5", "#ebc862", "#e4b034", "#c50100", "#830010"),
+            "dark": ("#151b23", "#830010", "#c50100", "#e4b034", "#ebc862"),
         }
-        source = ("#fef3e2", "#fab12f", "#fa812f", "#dd0303")
+        source = ("#ebc862", "#e4b034", "#c50100", "#830010")
         for theme in ("light", "dark"):
             plain = render_svg(calendar, pieces, theme)
             lunar = render_svg(calendar, pieces, theme, palette="lunarnewyear")
@@ -1671,6 +1672,8 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(festive[1:], source if theme == "light" else tuple(reversed(source)))
             self.assertEqual(len(festive), 5)
             self.assertEqual(len(set(festive)), 5)
+            for dropped in ("#960316", "#ca9d08", "#fef3e2", "#fab12f", "#fa812f", "#dd0303"):
+                self.assertNotIn(dropped, festive)
             self.assertEqual(green[0], festive[0])
             self.assertEqual(LUNAR_NEW_YEAR_PALETTES[theme]["text"], PALETTES[theme]["text"])
             self.assertEqual(LUNAR_NEW_YEAR_PALETTES[theme]["border"], PALETTES[theme]["border"])
@@ -1844,9 +1847,12 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             light = (folder / "tetris-contrib.svg").read_text(encoding="utf-8")
             dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
-            for color in ("#fef3e2", "#fab12f", "#fa812f", "#dd0303"):
+            for color in ("#ebc862", "#e4b034", "#c50100", "#830010"):
                 self.assertIn(f'fill="{color}"', light)
                 self.assertIn(f'fill="{color}"', dark)
+            for dropped in ("#960316", "#ca9d08", "#fef3e2", "#fab12f", "#fa812f", "#dd0303"):
+                self.assertNotIn(f'fill="{dropped}"', light)
+                self.assertNotIn(f'fill="{dropped}"', dark)
             self.assertIn('fill="#eff2f5"', light)
             self.assertIn('fill="#151b23"', dark)
             self.assertNotIn('fill="#aceebb"', light)
@@ -1857,10 +1863,10 @@ class PaletteTests(unittest.TestCase):
             action = (ROOT / "action.yml").read_text(encoding="utf-8")
             self.assertIn("lunarnewyear", action)
             self.assertIn("17-19 February 2026", action)
-            self.assertIn("https://colorhunt.co/palette/fef3e2fab12ffa812fdd0303", action)
+            self.assertIn("https://www.schemecolor.com/chinese-gold-red.php", action)
             readme = (ROOT / "README.md").read_text(encoding="utf-8")
             self.assertIn("lunarnewyear", readme)
-            self.assertIn("https://colorhunt.co/palette/fef3e2fab12ffa812fdd0303", readme)
+            self.assertIn("https://www.schemecolor.com/chinese-gold-red.php", readme)
             self.assertIn("2026-02-17", readme)
             self.assertIn("2035-02-08", readme)
 
@@ -1935,7 +1941,7 @@ class PaletteTests(unittest.TestCase):
 
             def is_lunar(pair: tuple[str, str]) -> bool:
                 light, dark = pair
-                return 'fill="#fef3e2"' in light and 'fill="#dd0303"' in dark and 'fill="#fa812f"' in light
+                return 'fill="#ebc862"' in light and 'fill="#830010"' in dark and 'fill="#c50100"' in light
 
             self.assertTrue(is_halloween(halloween_day))
             self.assertTrue(is_green(ordinary_day))

@@ -92,7 +92,7 @@ def parse_palette(raw: object) -> str:
     ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
     colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette.
     ``newyear`` uses Color Hunt's New Year gold palette. ``lunarnewyear`` uses
-    Color Hunt's Lunar New Year palette. ``auto`` uses halloween on 31 October
+    SchemeColor's Chinese gold and red palette. ``auto`` uses halloween on 31 October
     (UTC), christmas on 24-26 December (UTC), newyear on 1 January (UTC),
     lunarnewyear on each tabulated Lunar New Year date and the two following
     UTC days (2026-2035), and the green graph every other day. The sentence
@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
             "halloween uses GitHub's Halloween graph colors. "
             "christmas uses Coolors' popular Christmas palette. "
             "newyear uses Color Hunt's New Year gold palette. "
-            "lunarnewyear uses Color Hunt's Lunar New Year palette. "
+            "lunarnewyear uses SchemeColor's Chinese gold and red palette. "
             "auto uses halloween on 31 October (UTC), christmas on 24-26 December (UTC), "
             "newyear on 1 January (UTC), lunarnewyear on 17-19 February 2026, "
             "6-8 February 2027, 26-28 January 2028, 13-15 February 2029, "
