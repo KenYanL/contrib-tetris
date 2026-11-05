@@ -21,6 +21,7 @@ release.
 
 ### Fixed
 
+- A holiday palette whose level 0 drifts from the default empty-cell color is rejected when the catalog is loaded. Light level 0 must stay `#eff2f5` and dark level 0 must stay `#151b23` (2026-11-05).
 - `--out` and `--dump-json` fail before any file is written when the path cannot be created, or when `--dump-json` is the output directory or either SVG. A file where a directory is required, a directory where a file is required, and a parent that is a file all name that path. An existing SVG in a real output directory is still replaced (2026-11-04).
 - Fetching a contribution calendar no longer sends a ranged GraphQL query that GitHub rejects on every run. The profile window runs from the Sunday of the week one year ago through Saturday of this week, which is always longer than one year, so that query failed and the action retried the default collection. It now asks for the default collection directly. A shorter range that GitHub still rejects for spanning a year falls back the same way (2026-11-01).
 
