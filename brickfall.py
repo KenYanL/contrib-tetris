@@ -211,7 +211,11 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
 
 
 def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> None:
-    """Reject a catalog ``auto`` could not apply, before any SVG is drawn."""
+    """Reject a catalog ``auto`` could not apply, before any SVG is drawn.
+
+    Every concrete palette keeps level 0 as the neutral empty-cell color
+    from the default graph.
+    """
     if (
         not catalog
         or catalog[0][0] != "default"
@@ -225,6 +229,8 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
     seen_names: set[str] = set()
     seen_days: dict[tuple[int, int], str] = {}
     seen_dates: dict[date, str] = {}
+    # Level 0 of the default graph. Holidays may recolor active cells only.
+    neutral_level0: dict[str, object] = {}
     for name, spec in catalog:
         if not isinstance(name, str) or name.strip() == "" or name != name.strip():
             raise ValueError(f"palette name {name!r} cannot be registered. Use a short name such as halloween.")
@@ -244,6 +250,14 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
             levels = colors.get("levels")
             if not isinstance(levels, tuple) or len(levels) != 5:
                 raise ValueError(f"palette {name!r} {theme} needs five level colors.")
+            if name == "default":
+                neutral_level0[theme] = levels[0]
+            elif levels[0] != neutral_level0[theme]:
+                raise ValueError(
+                    f"palette {name!r} {theme} level 0 is {levels[0]!r}, "
+                    f"but every palette keeps the neutral empty-cell color {neutral_level0[theme]!r} "
+                    "from the default graph."
+                )
             if "text" not in colors or "border" not in colors:
                 raise ValueError(f"palette {name!r} {theme} needs text and border colors.")
         for month, day in spec.auto_days:

@@ -1588,6 +1588,32 @@ class PaletteTests(unittest.TestCase):
             self.assertEqual(resolve_palette("auto", date(year + 1, 1, 1)), "newyear")
             self.assertEqual(resolve_palette("auto", date(year + 1, 1, 2)), "default")
 
+    def test_catalog_keeps_the_default_empty_cell_on_every_palette(self) -> None:
+        """Level 0 stays the default empty cell. A drifted holiday is rejected."""
+        _validate_palette_catalog(PALETTE_CATALOG)
+        default = PALETTE_CATALOG[0][1]
+        self.assertEqual(default.themes["light"]["levels"][0], "#eff2f5")
+        self.assertEqual(default.themes["dark"]["levels"][0], "#151b23")
+        for name, spec in PALETTE_CATALOG:
+            for theme in ("light", "dark"):
+                self.assertEqual(
+                    spec.themes[theme]["levels"][0],
+                    default.themes[theme]["levels"][0],
+                    f"{name} {theme}",
+                )
+
+        halloween = PALETTE_CATALOG[1][1]
+        themes = {theme: dict(colors) for theme, colors in halloween.themes.items()}
+        themes["light"]["levels"] = ("#ffffff",) + tuple(themes["light"]["levels"][1:])
+        drifted = PaletteSpec(themes, "a holiday with a white empty cell", ((6, 1),))
+        with self.assertRaises(ValueError) as caught:
+            _validate_palette_catalog((("default", default), ("midsummer", drifted)))
+        message = str(caught.exception)
+        self.assertIn("midsummer", message)
+        self.assertIn("light", message)
+        self.assertIn("#ffffff", message)
+        self.assertIn("#eff2f5", message)
+
     def test_catalog_rejects_a_holiday_that_cannot_be_selected(self) -> None:
         """Overlapping days, impossible dates, and a dated default fail while loading."""
         default = PALETTE_CATALOG[0][1]
