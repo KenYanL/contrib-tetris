@@ -34,6 +34,7 @@ from brickfall import (  # noqa: E402
     calendar_to_json,
     coverage_errors,
     fetch_calendar,
+    palette_cli_help,
     palette_hint,
     pieces_for_calendar,
     render_svg,
@@ -89,14 +90,9 @@ def parse_seed(raw: object) -> int:
 def parse_palette(raw: object) -> str:
     """Return a palette name, or raise InputError naming palette.
 
-    ``default`` is the usual green graph. ``halloween`` uses GitHub's Halloween
-    colors on both SVGs. ``christmas`` uses Coolors' popular Christmas palette.
-    ``newyear`` uses Color Hunt's New Year gold palette. ``lunarnewyear`` uses
-    SchemeColor's Chinese gold and red palette. ``auto`` uses halloween on 31 October
-    (UTC), christmas on 24-26 December (UTC), newyear on 1 January (UTC),
-    lunarnewyear on each tabulated Lunar New Year date and the two following
-    UTC days (2026-2035), and the green graph every other day. The sentence
-    comes from ``PALETTE_CATALOG``.
+    Concrete names and ``auto`` match ``PALETTE_NAMES``. ``auto`` follows
+    ``PALETTE_CATALOG`` (UTC month-days and year-specific dates); every other
+    day stays on default. The rejection sentence comes from ``palette_hint``.
     """
     hint = palette_hint()
     if not isinstance(raw, str):
@@ -309,24 +305,7 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
     parser.add_argument(
         "--palette",
         default="default",
-        # Date phrases are format_auto_days and format_auto_dates of
-        # PALETTE_CATALOG. The palette test fails if the catalog gains a
-        # holiday and this text does not name it.
-        help=(
-            "Contribution colors for both the light and dark SVGs. "
-            "default is the usual green graph. "
-            "halloween uses GitHub's Halloween graph colors. "
-            "christmas uses Coolors' popular Christmas palette. "
-            "newyear uses Color Hunt's New Year gold palette. "
-            "lunarnewyear uses SchemeColor's Chinese gold and red palette. "
-            "auto uses halloween on 31 October (UTC), christmas on 24-26 December (UTC), "
-            "newyear on 1 January (UTC), lunarnewyear on 17-19 February 2026, "
-            "6-8 February 2027, 26-28 January 2028, 13-15 February 2029, "
-            "3-5 February 2030, 23-25 January 2031, 11-13 February 2032, "
-            "31 January-2 February 2033, 19-21 February 2034, and 8-10 February 2035 (UTC), "
-            "and default every other day. A year outside 2026-2035 stays on default "
-            "for Lunar New Year"
-        ),
+        help=palette_cli_help(),
     )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
     args = parser.parse_args(argv)

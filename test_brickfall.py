@@ -53,6 +53,7 @@ from brickfall import (  # noqa: E402
     decompose,
     format_auto_dates,
     format_auto_days,
+    palette_cli_help,
     palette_hint,
     QUERY,
     QUERY_DEFAULT,
@@ -1697,6 +1698,8 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         # argparse wraps the help line, so compare the words with the breaks gone.
         text = " ".join(proc.stdout.split())
+        expected = " ".join(palette_cli_help().split())
+        self.assertIn(expected, text)
         for name, spec in PALETTE_CATALOG:
             self.assertIn(name, text)
             if spec.auto_days:
