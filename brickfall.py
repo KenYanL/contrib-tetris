@@ -417,6 +417,40 @@ def palette_hint() -> str:
             auto_parts.append(f"{name} on {format_auto_dates(spec.auto_dates)} (UTC)")
     return f"Use {named}, or auto to use {', '.join(auto_parts)}, and default every other day."
 
+
+def palette_cli_help() -> str:
+    """Argparse help for ``--palette``, built from ``PALETTE_CATALOG``.
+
+    A new holiday shows up in ``--help`` without a second copy of its dates
+    or summary. Year-specific ``auto_dates`` also state that a year outside
+    the table stays on default.
+    """
+    parts: list[str] = ["Contribution colors for both the light and dark SVGs."]
+    for name, spec in PALETTE_CATALOG:
+        if name == "default":
+            parts.append(f"{name} is {spec.summary}.")
+        else:
+            parts.append(f"{name} uses {spec.summary}.")
+    auto_parts: list[str] = []
+    outside_parts: list[str] = []
+    for name, spec in PALETTE_CATALOG:
+        if spec.auto_days:
+            auto_parts.append(f"{name} on {format_auto_days(spec.auto_days)} (UTC)")
+        if spec.auto_dates:
+            auto_parts.append(f"{name} on {format_auto_dates(spec.auto_dates)} (UTC)")
+            years = [when.year for when in spec.auto_dates]
+            outside_parts.append(
+                f"A year outside {min(years)}-{max(years)} stays on default for {name}"
+            )
+    if auto_parts:
+        parts.append(
+            f"auto uses {', '.join(auto_parts)}, and default every other day."
+        )
+    else:
+        parts.append("auto uses default every day.")
+    parts.extend(f"{sentence}." for sentence in outside_parts)
+    return " ".join(parts)
+
 LEVEL_NAMES = {
     "NONE": 0,
     "FIRST_QUARTILE": 1,

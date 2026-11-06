@@ -17,6 +17,7 @@ release.
 
 ### Changed
 
+- `--palette` help is built from `PALETTE_CATALOG` the same way the rejection hint is, so a new holiday cannot drift out of `--help` (2026-11-06).
 - Concrete palettes live in one catalog. Each entry has the palette name, its light and dark scales, and the UTC days `auto` selects it. Adding a holiday is that one entry; the name list and the rejection message are built from it. The default, Halloween, and Christmas SVGs are unchanged (2026-11-03).
 
 ### Fixed
