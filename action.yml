@@ -13,7 +13,17 @@ inputs:
     description: >-
       GitHub login whose contribution calendar is drawn. 1-39 letters, digits,
       or single hyphens; not empty, and not starting or ending with a hyphen.
+      When calendar_json is set, this value is still passed as --username so it
+      can override the username label stored in that JSON file.
     required: true
+  calendar_json:
+    description: >-
+      Workspace-relative path to a contribution calendar JSON file (same shape
+      as sample/contributions.json or demo/contributions.json). When set, the
+      action reads that file instead of calling the GitHub API, so token is not
+      used. Must not be empty, must not contain '..', and must end in .json.
+      Omit to keep fetching the live calendar for github_user_name.
+    required: false
   svg_light_path:
     description: >-
       Workspace-relative file path for the light-theme SVG. Must end in .svg
@@ -29,7 +39,7 @@ inputs:
   token:
     description: >-
       Non-empty token used to read the public contribution calendar. Defaults
-      to the calling workflow's GITHUB_TOKEN.
+      to the calling workflow's GITHUB_TOKEN. Unused when calendar_json is set.
     required: false
     default: ${{ github.token }}
   seed:
@@ -79,6 +89,7 @@ runs:
       shell: bash
       env:
         TETRIS_USER: ${{ inputs.github_user_name }}
+        TETRIS_INPUT: ${{ inputs.calendar_json }}
         TETRIS_TOKEN: ${{ inputs.token }}
         TETRIS_LIGHT: ${{ inputs.svg_light_path }}
         TETRIS_DARK: ${{ inputs.svg_dark_path }}
@@ -93,23 +104,32 @@ runs:
           echo "contrib-tetris needs Python 3.10 or newer (ubuntu-latest already has it)." >&2
           exit 1
         fi
-        token="${TETRIS_TOKEN:-}"
-        if [ -z "$token" ]; then
-          echo "contrib-tetris: token is empty. Pass a non-empty GitHub token that can read the contribution calendar, or omit token to use the calling workflow's GITHUB_TOKEN." >&2
-          exit 1
-        fi
+        input="${TETRIS_INPUT:-}"
         seed="${TETRIS_SEED:-0}"
         if [ -z "$seed" ]; then
           seed=0
         fi
-        python3 "${{ github.action_path }}/generate.py" \
-          --username "$TETRIS_USER" \
-          --token "$token" \
-          --light "$TETRIS_LIGHT" \
-          --dark "$TETRIS_DARK" \
-          --seed "$seed" \
-          --speed "${TETRIS_SPEED-1.0}" \
+        gen=(
+          python3 "${{ github.action_path }}/generate.py"
+          --username "$TETRIS_USER"
+          --light "$TETRIS_LIGHT"
+          --dark "$TETRIS_DARK"
+          --seed "$seed"
+          --speed "${TETRIS_SPEED-1.0}"
           --palette "${TETRIS_PALETTE-default}"
+        )
+        if [ -n "$input" ]; then
+          # calendar_json is set: read that file; token is unused.
+          gen+=(--input "$input")
+        else
+          token="${TETRIS_TOKEN:-}"
+          if [ -z "$token" ]; then
+            echo "contrib-tetris: token is empty. Pass a non-empty GitHub token that can read the contribution calendar, or omit token to use the calling workflow's GITHUB_TOKEN. Or set calendar_json to a saved contributions JSON instead." >&2
+            exit 1
+          fi
+          gen+=(--token "$token")
+        fi
+        "${gen[@]}"
         {
           echo "svg_light_path<<EOF"
           echo "$TETRIS_LIGHT"
