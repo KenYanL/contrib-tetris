@@ -9,6 +9,14 @@ and `v1.4.0` point at the 2026-11-06 release.
 
 ## [Unreleased]
 
+### Added
+
+- Optional `calendar_json` action input. When set to a workspace-relative contribution calendar JSON path (same shape as `sample/contributions.json` / `demo/contributions.json`), the composite action passes it to `generate.py --input` and skips the GitHub API, so `token` is unused. `github_user_name` stays required and still overrides the JSON username label. Omit `calendar_json` to keep fetching the live calendar (2026-11-07).
+
+### Changed
+
+- This repo's [`.github/workflows/tetris.yml`](.github/workflows/tetris.yml) publish job renders the seeded `demo/contributions.json` calendar (`github_user_name: demo`) onto the `output` branch instead of fetching KenYanL's live contribution graph. Pull requests still run tests only (2026-11-07).
+
 ## [v1.4.0] - 2026-11-06
 
 ### Added

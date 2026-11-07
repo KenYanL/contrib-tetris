@@ -766,6 +766,40 @@ class InputValidationTests(unittest.TestCase):
             self.assertNotIn("GraphQL", blank_token.stderr)
             self.assertFalse(light.exists())
 
+    def test_action_wires_calendar_json_and_workflow_publishes_demo(self) -> None:
+        """The action can render a saved calendar JSON; this repo publishes demo/.
+
+        Standing rule: never show a live contribution graph from this workflow.
+        ``calendar_json`` skips the API; the publish job must use the seeded
+        ``demo/contributions.json`` with username ``demo``, not KenYanL live.
+        """
+        action = (ROOT / "action.yml").read_text(encoding="utf-8")
+        self.assertIn("\n  calendar_json:\n", action)
+        self.assertIn("TETRIS_INPUT: ${{ inputs.calendar_json }}", action)
+        self.assertIn('--input "$input"', action)
+        self.assertIn('if [ -n "$input" ]; then', action)
+        # Live-fetch path still requires a token; the calendar_json path must not.
+        token_guard = (
+            'echo "contrib-tetris: token is empty. Pass a non-empty GitHub token'
+        )
+        self.assertIn(token_guard, action)
+        input_branch = action.split('if [ -n "$input" ]; then', 1)[1]
+        else_branch = input_branch.split("else", 1)[1]
+        self.assertIn('gen+=(--input "$input")', input_branch.split("else", 1)[0])
+        self.assertIn(token_guard, else_branch)
+        self.assertIn('gen+=(--token "$token")', else_branch)
+        self.assertNotIn(token_guard, input_branch.split("else", 1)[0])
+
+        workflow = (ROOT / ".github" / "workflows" / "tetris.yml").read_text(encoding="utf-8")
+        self.assertIn("calendar_json: demo/contributions.json", workflow)
+        self.assertIn("github_user_name: demo", workflow)
+        self.assertNotIn("github_user_name: KenYanL", workflow)
+        self.assertIn("seeded", workflow.lower())
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("`calendar_json`", readme)
+        self.assertIn("demo/contributions.json", readme)
+        self.assertIn("does not fetch", readme.lower())
+
     def test_action_style_inputs_still_render(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()

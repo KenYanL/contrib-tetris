@@ -50,7 +50,8 @@ jobs:
           github_user_name: ${{ github.repository_owner }}
           svg_light_path: dist/tetris-contrib.svg
           svg_dark_path: dist/tetris-contrib-dark.svg
-          # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token
+          # calendar_json: path/to/contributions.json  # optional; skip the API and render a saved calendar
+          # token: ${{ secrets.GITHUB_TOKEN }}  # optional; defaults to the workflow token; unused with calendar_json
           # seed: "1"                            # optional; omit for the stable pack
           # speed: "1.0"                         # optional; 2 plays twice as fast, 0.5 at half speed
           # palette: default                     # optional; halloween, christmas, newyear, lunarnewyear, or auto
@@ -74,21 +75,22 @@ Put this in the profile README. Swap in the repository that owns the `output` br
 </picture>
 ```
 
-The public contribution calendar is readable with the default workflow token.
+The public contribution calendar is readable with the default workflow token. To render a saved calendar JSON instead (and skip the API), set `calendar_json` to a workspace-relative `.json` path such as `demo/contributions.json`.
 
 ### Inputs
 
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
-| `github_user_name` | yes | | GitHub login whose calendar is drawn. |
+| `github_user_name` | yes | | GitHub login whose calendar is drawn. When `calendar_json` is set, this still overrides the username label in that JSON. |
+| `calendar_json` | no | | Workspace-relative path to a saved contribution calendar JSON (same shape as `sample/contributions.json` / `demo/contributions.json`). When set, the action reads that file instead of calling the GitHub API, so `token` is unused. Must not be empty, must not contain `..`, and must end in `.json`. Omit to fetch the live calendar for `github_user_name`. |
 | `svg_light_path` | no | `dist/tetris-contrib.svg` | Where to write the light SVG. |
 | `svg_dark_path` | no | `dist/tetris-contrib-dark.svg` | Where to write the dark SVG. |
-| `token` | no | workflow token | Token for the GraphQL contribution query. |
+| `token` | no | workflow token | Token for the GraphQL contribution query. Unused when `calendar_json` is set. |
 | `seed` | no | `0` | Same seed, same bricks. `0` is the stable pack. |
 | `speed` | no | `1.0` | Animation speed. `1` is the normal pace. `2` plays twice as fast and `0.5` plays at half speed. The bricks stay the same. |
 | `palette` | no | `default` | Contribution colors for both SVGs. `default` is the usual green graph. `halloween` uses GitHub's Halloween colors. `christmas` uses [Coolors' most popular Christmas palette](https://coolors.co/palettes/popular/christmas). `newyear` uses [Color Hunt's gold gradient palette](https://colorhunt.co/palette/f9e6a8f2a900cc6f004d2a00). `lunarnewyear` uses [SchemeColor's Chinese Gold & Red palette](https://www.schemecolor.com/chinese-gold-red.php). `auto` uses Halloween on 31 October (UTC), Christmas on 24-26 December (UTC), New Year's Day on 1 January (UTC), Lunar New Year on the festival day and the two following UTC days for 2026-2035, and green every other UTC day. A year outside that table stays green. |
 
-Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, two different workspace-relative `.svg` paths, a non-empty token, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, `newyear`, `lunarnewyear`, or `auto`.
+Invalid values fail the step before any SVG is written. The message names the input and a valid example: a GitHub login, an optional workspace-relative `.json` calendar path, two different workspace-relative `.svg` paths, a non-empty token when fetching live, a `seed` from -2147483648 to 2147483647, a positive `speed` such as `1`, `2`, or `0.5`, and a `palette` of `default`, `halloween`, `christmas`, `newyear`, `lunarnewyear`, or `auto`.
 
 ### Outputs
 
@@ -105,7 +107,7 @@ Paste the `<picture>` block from [Use it](#use-it) into the README of the reposi
 
 ### Which branch do the SVGs get published to, and why?
 
-The action writes both files in the job workspace. The defaults are `dist/tetris-contrib.svg` and `dist/tetris-contrib-dark.svg`. The example workflow then publishes the `dist/` directory to a branch named `output` with `crazy-max/ghaction-github-pages`, so those SVGs sit at the root of that branch and the raw URLs above resolve. `main` stays the action source. This repo's [`.github/workflows/tetris.yml`](.github/workflows/tetris.yml) does the same publish, and the publish job runs on the daily schedule, on `workflow_dispatch`, and on pushes to `main`. Pull requests run the test job only.
+The action writes both files in the job workspace. The defaults are `dist/tetris-contrib.svg` and `dist/tetris-contrib-dark.svg`. The example workflow then publishes the `dist/` directory to a branch named `output` with `crazy-max/ghaction-github-pages`, so those SVGs sit at the root of that branch and the raw URLs above resolve. `main` stays the action source. This repo's [`.github/workflows/tetris.yml`](.github/workflows/tetris.yml) publishes the seeded `demo/` calendar (via `calendar_json: demo/contributions.json`) to `output` on the daily schedule, on `workflow_dispatch`, and on pushes to `main`. It does not fetch or publish anyone's live contribution graph. Pull requests run the test job only.
 
 ### How often does it update, and how do I change the schedule?
 
@@ -113,7 +115,7 @@ The schedule is the workflow's cron. The example and this repo both use `41 7 * 
 
 ### What token and permissions does it need?
 
-`token` defaults to the calling workflow's `GITHUB_TOKEN` (`${{ github.token }}`). The action sends it as a bearer token to `https://api.github.com/graphql` and reads that login's contribution calendar. The public calendar is readable with that default token. An empty token fails the step. Publishing the `output` branch needs `contents: write` on the job that pushes. The example sets that at the workflow level. This repo's workflow leaves the default at `contents: read` and sets `contents: write` only on the publish job.
+`token` defaults to the calling workflow's `GITHUB_TOKEN` (`${{ github.token }}`). When `calendar_json` is omitted, the action sends that token as a bearer token to `https://api.github.com/graphql` and reads that login's contribution calendar. The public calendar is readable with that default token. An empty token fails the step when fetching live. When `calendar_json` is set, the action reads that JSON file instead and does not use `token`. Publishing the `output` branch needs `contents: write` on the job that pushes. The example sets that at the workflow level. This repo's workflow leaves the default at `contents: read` and sets `contents: write` only on the publish job.
 
 ### Why is the name Contribution Brickfall when usage is `uses: KenYanL/contrib-tetris@v1`?
 
@@ -160,12 +162,12 @@ python3 generate.py --input sample/contributions.json --out dist --palette auto
 
 `--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December. New Year's Day is 1 January. Lunar New Year is the tabulated UTC date and the two following days, for 2026-2035 only.
 
-`.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders KenYanL's calendar and writes:
+`.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders the seeded `demo/contributions.json` calendar (username label `demo`) and writes:
 
 - `tetris-contrib.svg`
 - `tetris-contrib-dark.svg`
 
-to the `output` branch only.
+to the `output` branch only. It does not fetch a live contribution calendar.
 
 ## Prior art & credits
 
