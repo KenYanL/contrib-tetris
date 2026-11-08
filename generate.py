@@ -142,8 +142,8 @@ def checked_username(username: str | None, *, required: bool) -> str | None:
 
 
 def _relative_paths_required() -> bool:
-    # action.yml sets this so SVG paths stay inside the workspace. The CLI
-    # leaves it unset and still accepts absolute paths.
+    # action.yml sets this so SVG and calendar JSON paths stay inside the
+    # workspace. The CLI leaves it unset and still accepts absolute paths.
     return os.environ.get("TETRIS_REQUIRE_RELATIVE") == "1"
 
 
@@ -176,6 +176,39 @@ def validate_output_path(raw: str, name: str, *, example: str, relative: bool) -
         raise InputError(
             f"{name} is {raw!r}, which must be relative to the workspace, not an absolute path. "
             f"Pass a file path ending in .svg, for example {example}."
+        )
+    return path
+
+
+def validate_input_path(raw: str, name: str, *, example: str, relative: bool) -> Path:
+    """Return the calendar JSON path to read, or raise InputError naming that input."""
+    if raw.strip() == "":
+        raise InputError(f"{name} is empty. Pass a file path ending in .json, for example {example}.")
+    if raw != raw.strip() or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        raise InputError(
+            f"{name} is {raw!r}, which is not a valid file path. "
+            "Pass a file path ending in .json with no leading or trailing whitespace "
+            f"and no control characters, for example {example}."
+        )
+    if raw.endswith(("/", "\\")):
+        raise InputError(
+            f"{name} is {raw!r}, which points at a directory. "
+            f"Pass a file path ending in .json, for example {example}."
+        )
+    path = Path(raw)
+    if any(part == ".." for part in path.parts):
+        raise InputError(
+            f"{name} is {raw!r}, which must not contain '..'. "
+            f"Pass a file path ending in .json, for example {example}."
+        )
+    if path.suffix.lower() != ".json":
+        raise InputError(
+            f"{name} is {raw!r}, which must be a file path ending in .json, for example {example}."
+        )
+    if relative and path.is_absolute():
+        raise InputError(
+            f"{name} is {raw!r}, which must be relative to the workspace, not an absolute path. "
+            f"Pass a file path ending in .json, for example {example}."
         )
     return path
 
@@ -272,7 +305,7 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render a Tetris-style contribution calendar SVG.")
     parser.add_argument("--username", help="GitHub login whose calendar should be drawn")
     parser.add_argument("--token", help="GitHub token with access to the contribution calendar. Defaults to $GITHUB_TOKEN")
-    parser.add_argument("--input", type=Path, help="Read a previously saved contributions JSON instead of calling the API")
+    parser.add_argument("--input", help="Read a previously saved contributions JSON instead of calling the API")
     parser.add_argument(
         "--dump-json",
         type=Path,
@@ -378,22 +411,28 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
                 hint="Pass a file path, for example dist/contributions.json.",
             )
 
-        if args.input:
+        if args.input is not None:
             username = checked_username(args.username, required=False)
             example = "Pass a contribution calendar JSON file, for example sample/contributions.json."
+            input_path = validate_input_path(
+                args.input,
+                "calendar_json (--input)",
+                example="sample/contributions.json",
+                relative=relative,
+            )
             try:
-                raw_text = args.input.read_text(encoding="utf-8")
+                raw_text = input_path.read_text(encoding="utf-8")
             except FileNotFoundError:
-                raise InputError(f"--input {args.input} was not found. {example}") from None
+                raise InputError(f"--input {input_path} was not found. {example}") from None
             except IsADirectoryError:
-                raise InputError(f"--input {args.input} is a directory. {example}") from None
+                raise InputError(f"--input {input_path} is a directory. {example}") from None
             except UnicodeDecodeError:
-                raise InputError(f"--input {args.input} is not UTF-8 text. {example}") from None
+                raise InputError(f"--input {input_path} is not UTF-8 text. {example}") from None
             try:
                 payload = json.loads(raw_text)
             except json.JSONDecodeError as exc:
                 raise InputError(
-                    f"--input {args.input} is not valid JSON ({exc.msg} on line {exc.lineno}). {example}"
+                    f"--input {input_path} is not valid JSON ({exc.msg} on line {exc.lineno}). {example}"
                 ) from None
             if isinstance(payload, dict) and username is not None:
                 payload = {**payload, "username": username}
