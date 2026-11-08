@@ -17,6 +17,10 @@ and `v1.4.0` point at the 2026-11-06 release.
 
 - This repo's [`.github/workflows/tetris.yml`](.github/workflows/tetris.yml) publish job renders the seeded `demo/contributions.json` calendar (`github_user_name: demo`) onto the `output` branch instead of fetching KenYanL's live contribution graph. Pull requests still run tests only (2026-11-07).
 
+### Fixed
+
+- `calendar_json` (`--input`) is rejected before any SVG is written when the path is empty, contains `..`, is not a `.json` file, or (when the action sets `TETRIS_REQUIRE_RELATIVE`) is not workspace-relative (2026-11-08).
+
 ## [v1.4.0] - 2026-11-06
 
 ### Added

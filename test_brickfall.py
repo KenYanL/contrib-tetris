@@ -23,6 +23,7 @@ from generate import (  # noqa: E402
     parse_palette,
     parse_seed,
     parse_speed,
+    validate_input_path,
     validate_output_path,
 )
 from brickfall import (  # noqa: E402
@@ -691,6 +692,42 @@ class InputValidationTests(unittest.TestCase):
             self.assertIn("svg_light_path", message)
             self.assertIn("dist/tetris-contrib.svg", message)
 
+    def test_input_paths_name_the_input_and_an_example(self) -> None:
+        calendar = validate_input_path(
+            "sample/contributions.json",
+            "calendar_json (--input)",
+            example="sample/contributions.json",
+            relative=True,
+        )
+        self.assertEqual(calendar.as_posix(), "sample/contributions.json")
+        absolute = validate_input_path(
+            "/tmp/a.json",
+            "calendar_json (--input)",
+            example="sample/contributions.json",
+            relative=False,
+        )
+        self.assertTrue(absolute.is_absolute())
+        for bad in (
+            "",
+            "   ",
+            "sample/",
+            "../x.json",
+            "sample/../x.json",
+            "file.txt",
+            "/tmp/a.json",
+            "a.json\n",
+        ):
+            with self.assertRaises(InputError) as caught:
+                validate_input_path(
+                    bad,
+                    "calendar_json (--input)",
+                    example="sample/contributions.json",
+                    relative=True,
+                )
+            message = str(caught.exception)
+            self.assertIn("calendar_json", message)
+            self.assertIn("sample/contributions.json", message)
+
     def test_cli_rejects_bad_inputs_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             light = Path(tmp) / "light.svg"
@@ -766,6 +803,27 @@ class InputValidationTests(unittest.TestCase):
             self.assertNotIn("GraphQL", blank_token.stderr)
             self.assertFalse(light.exists())
 
+    def test_cli_rejects_bad_input_paths_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            light = Path(tmp) / "light.svg"
+            dark = Path(tmp) / "dark.svg"
+            env = os.environ.copy()
+            env.pop("GITHUB_TOKEN", None)
+            env.pop("GITHUB_ACTOR", None)
+            env.pop("GITHUB_USERNAME", None)
+            env.pop("TETRIS_REQUIRE_RELATIVE", None)
+
+            for bad in ("", "   ", "../x.json", "sample/../x.json", "file.txt", "calendar.json/"):
+                proc = _run_generate(
+                    ["--input", bad, "--light", str(light), "--dark", str(dark), "--seed", "0"],
+                    env=env,
+                )
+                self.assertNotEqual(proc.returncode, 0, bad)
+                self.assertIn("calendar_json", proc.stderr)
+                self.assertIn("sample/contributions.json", proc.stderr)
+                self.assertFalse(light.exists())
+                self.assertFalse(dark.exists())
+
     def test_action_wires_calendar_json_and_workflow_publishes_demo(self) -> None:
         """The action can render a saved calendar JSON; this repo publishes demo/.
 
@@ -804,10 +862,14 @@ class InputValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["TETRIS_REQUIRE_RELATIVE"] = "1"
+            workspace = Path(tmp)
+            relative_input = workspace / "sample" / "contributions.json"
+            relative_input.parent.mkdir(parents=True)
+            relative_input.write_bytes(SAMPLE.read_bytes())
             proc = _run_generate(
                 [
                     "--input",
-                    str(SAMPLE),
+                    "sample/contributions.json",
                     "--username",
                     "KenYanL",
                     "--light",
@@ -821,8 +883,8 @@ class InputValidationTests(unittest.TestCase):
                 cwd=tmp,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            light = Path(tmp) / "dist" / "tetris-contrib.svg"
-            dark = Path(tmp) / "dist" / "tetris-contrib-dark.svg"
+            light = workspace / "dist" / "tetris-contrib.svg"
+            dark = workspace / "dist" / "tetris-contrib-dark.svg"
             self.assertIn("#aceebb", light.read_text(encoding="utf-8"))
             self.assertIn("#56d364", dark.read_text(encoding="utf-8"))
             self.assertIn("KenYanL", light.read_text(encoding="utf-8"))
@@ -830,9 +892,9 @@ class InputValidationTests(unittest.TestCase):
             absolute = _run_generate(
                 [
                     "--input",
-                    str(SAMPLE),
+                    "sample/contributions.json",
                     "--light",
-                    str(Path(tmp) / "abs.svg"),
+                    str(workspace / "abs.svg"),
                     "--dark",
                     "dist/tetris-contrib-dark.svg",
                     "--seed",
@@ -844,7 +906,28 @@ class InputValidationTests(unittest.TestCase):
             self.assertNotEqual(absolute.returncode, 0)
             self.assertIn("svg_light_path", absolute.stderr)
             self.assertIn("relative", absolute.stderr)
-            self.assertFalse((Path(tmp) / "abs.svg").exists())
+            self.assertFalse((workspace / "abs.svg").exists())
+
+            absolute_input = _run_generate(
+                [
+                    "--input",
+                    str(SAMPLE),
+                    "--light",
+                    "other/tetris-contrib.svg",
+                    "--dark",
+                    "other/tetris-contrib-dark.svg",
+                    "--seed",
+                    "0",
+                ],
+                env=env,
+                cwd=tmp,
+            )
+            self.assertNotEqual(absolute_input.returncode, 0)
+            self.assertIn("calendar_json", absolute_input.stderr)
+            self.assertIn("relative", absolute_input.stderr)
+            self.assertIn("sample/contributions.json", absolute_input.stderr)
+            self.assertFalse((workspace / "other" / "tetris-contrib.svg").exists())
+            self.assertFalse((workspace / "other" / "tetris-contrib-dark.svg").exists())
 
     def test_cli_rejects_outputs_that_cannot_be_written(self) -> None:
         """A path that cannot be written fails before any SVG or JSON is created.
@@ -1118,8 +1201,10 @@ class InputValidationTests(unittest.TestCase):
             self.assertFalse(out.exists())
             self.assertFalse(dumped.exists())
 
+            calendar_dir = root / "calendar.json"
+            calendar_dir.mkdir()
             directory_run = _run_generate(
-                ["--input", str(root), "--out", str(out)],
+                ["--input", str(calendar_dir), "--out", str(out)],
                 env=env,
             )
             self.assertEqual(directory_run.returncode, 1)
@@ -1128,7 +1213,7 @@ class InputValidationTests(unittest.TestCase):
             self.assertNotIn("Traceback", directory_run.stderr)
             self.assertFalse(out.exists())
 
-            binary = root / "calendar.bin"
+            binary = root / "binary.json"
             binary.write_bytes(b"\xff")
             binary_run = _run_generate(
                 ["--input", str(binary), "--out", str(out)],
