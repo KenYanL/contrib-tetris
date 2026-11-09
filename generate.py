@@ -426,6 +426,12 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
                 raise InputError(f"--input {input_path} was not found. {example}") from None
             except IsADirectoryError:
                 raise InputError(f"--input {input_path} is a directory. {example}") from None
+            except NotADirectoryError:
+                raise InputError(
+                    f"--input {input_path} has a parent that is a file, not a directory. {example}"
+                ) from None
+            except PermissionError:
+                raise InputError(f"--input {input_path} cannot be read (permission denied). {example}") from None
             except UnicodeDecodeError:
                 raise InputError(f"--input {input_path} is not UTF-8 text. {example}") from None
             try:

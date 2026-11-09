@@ -1213,6 +1213,34 @@ class InputValidationTests(unittest.TestCase):
             self.assertNotIn("Traceback", directory_run.stderr)
             self.assertFalse(out.exists())
 
+            parent_file = root / "parent-file"
+            parent_file.write_text("x", encoding="utf-8")
+            nested_run = _run_generate(
+                ["--input", str(parent_file / "calendar.json"), "--out", str(out)],
+                env=env,
+            )
+            self.assertEqual(nested_run.returncode, 1)
+            self.assertIn("has a parent that is a file", nested_run.stderr)
+            self.assertIn("sample/contributions.json", nested_run.stderr)
+            self.assertNotIn("Traceback", nested_run.stderr)
+            self.assertFalse(out.exists())
+
+            if hasattr(os, "geteuid") and os.geteuid() != 0:
+                locked = root / "locked.json"
+                locked.write_text("{}", encoding="utf-8")
+                locked.chmod(0)
+                try:
+                    locked_run = _run_generate(
+                        ["--input", str(locked), "--out", str(out)],
+                        env=env,
+                    )
+                finally:
+                    locked.chmod(0o600)
+                self.assertEqual(locked_run.returncode, 1)
+                self.assertIn("permission denied", locked_run.stderr)
+                self.assertNotIn("Traceback", locked_run.stderr)
+                self.assertFalse(out.exists())
+
             binary = root / "binary.json"
             binary.write_bytes(b"\xff")
             binary_run = _run_generate(
