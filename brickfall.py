@@ -116,6 +116,28 @@ LUNAR_NEW_YEAR_PALETTES: dict[str, dict[str, object]] = {
     },
 }
 
+# SchemeColor's Valentine's Hearts
+# (https://www.schemecolor.com/valentines-hearts.php):
+# f7aee8, fd647c, f6383a, d81a37.
+# All four source colors are used exactly. Level 0 keeps the neutral
+# GitHub empty cell. The four colors run from lightest to darkest on
+# the light graph and the reverse on the dark graph. Text and the
+# cell border match the default theme.
+# Light: #eff2f5 #f7aee8 #fd647c #f6383a #d81a37
+# Dark:  #151b23 #d81a37 #f6383a #fd647c #f7aee8
+VALENTINE_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#f7aee8", "#fd647c", "#f6383a", "#d81a37"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#d81a37", "#f6383a", "#fd647c", "#f7aee8"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
 # First day of Lunar New Year (春节) as a UTC calendar date.
 # These are the first day of the first lunar month in the Hong Kong
 # Observatory Gregorian-Lunar conversion tables
@@ -141,8 +163,11 @@ LUNAR_NEW_YEAR_DATES: tuple[date, ...] = (
 # Christmas covers three UTC days (24-26 December). Lunar New Year uses
 # that same length: the tabulated day and the two UTC days after it.
 # The earliest tabulated day is 23 January, so the window never includes
-# 1 January and does not overlap ``newyear``.
+# 1 January and does not overlap ``newyear``. 14 February stays
+# ``valentine``, so 14 February 2029 is left out of the window and that
+# year is 13 and 15 February.
 LUNAR_NEW_YEAR_SPAN_DAYS = 3
+VALENTINE_DAY = (2, 14)
 
 @dataclass(frozen=True)
 class PaletteSpec:
@@ -161,15 +186,28 @@ class PaletteSpec:
     auto_dates: tuple[date, ...] = ()
 
 
-def _holiday_window(anchors: tuple[date, ...], days: int) -> tuple[date, ...]:
+def _holiday_window(
+    anchors: tuple[date, ...],
+    days: int,
+    skip: tuple[tuple[int, int], ...] = (),
+) -> tuple[date, ...]:
     """Each anchor date plus the following UTC days, ``days`` long in all.
 
     ``days`` includes the anchor. A span of 3 is the anchor and the next
-    two UTC days, the same length as 24-26 December.
+    two UTC days, the same length as 24-26 December. ``skip`` is UTC
+    (month, day) pairs left out of the window, so a moving holiday does
+    not take a day that already belongs to a repeating palette.
     """
     if days < 1:
         raise ValueError("a holiday window covers at least one day")
-    return tuple(anchor + timedelta(days=offset) for anchor in anchors for offset in range(days))
+    excluded = set(skip)
+    return tuple(
+        day
+        for anchor in anchors
+        for offset in range(days)
+        for day in (anchor + timedelta(days=offset),)
+        if (day.month, day.day) not in excluded
+    )
 
 
 # Concrete palettes in the order ``auto`` checks them. ``default`` is first
@@ -200,11 +238,23 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
         ),
     ),
     (
+        "valentine",
+        PaletteSpec(
+            VALENTINE_PALETTES,
+            "SchemeColor's Valentine's Hearts palette",
+            (VALENTINE_DAY,),
+        ),
+    ),
+    (
         "lunarnewyear",
         PaletteSpec(
             LUNAR_NEW_YEAR_PALETTES,
             "SchemeColor's Chinese gold and red palette",
-            auto_dates=_holiday_window(LUNAR_NEW_YEAR_DATES, LUNAR_NEW_YEAR_SPAN_DAYS),
+            auto_dates=_holiday_window(
+                LUNAR_NEW_YEAR_DATES,
+                LUNAR_NEW_YEAR_SPAN_DAYS,
+                skip=(VALENTINE_DAY,),
+            ),
         ),
     ),
 )
@@ -463,15 +513,16 @@ LEVEL_NAMES = {
 def resolve_palette(name: str, today: date) -> str:
     """Return the concrete palette for ``name`` on ``today``.
 
-    ``default``, ``halloween``, ``christmas``, ``newyear``, and
-    ``lunarnewyear`` are returned as given. ``auto`` follows
-    ``PALETTE_CATALOG``: halloween on 31 October, christmas on 24-26
-    December, newyear on 1 January, and lunarnewyear on each tabulated
-    Lunar New Year date plus the next two UTC days (2026-2035). Every
-    other day is ``default``, including 31 December, 2 January, and a
-    Lunar New Year in a year the table does not list. ``today`` is the
-    calendar day to test. This does not read the clock; pass the current
-    UTC date when the caller means now.
+    ``default``, ``halloween``, ``christmas``, ``newyear``,
+    ``valentine``, and ``lunarnewyear`` are returned as given. ``auto``
+    follows ``PALETTE_CATALOG``: halloween on 31 October, christmas on
+    24-26 December, newyear on 1 January, valentine on 14 February, and
+    lunarnewyear on each tabulated Lunar New Year date plus the next two
+    UTC days (2026-2035), except 14 February, which stays valentine.
+    Every other day is ``default``, including 31 December, 2 January,
+    and a Lunar New Year in a year the table does not list. ``today`` is
+    the calendar day to test. This does not read the clock; pass the
+    current UTC date when the caller means now.
     """
     if name == "auto":
         key = (today.month, today.day)

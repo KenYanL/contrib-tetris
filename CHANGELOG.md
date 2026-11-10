@@ -11,6 +11,7 @@ and `v1.4.0` point at the 2026-11-06 release.
 
 ### Added
 
+- Optional `valentine` value for the `palette` input (`--palette valentine`). Both SVGs use [SchemeColor's Valentine's Hearts palette](https://www.schemecolor.com/valentines-hearts.php) (`#f7aee8`, `#fd647c`, `#f6383a`, `#d81a37`), lightest to darkest. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#f7aee8 #fd647c #f6383a #d81a37`. Dark levels 1-4 are `#d81a37 #f6383a #fd647c #f7aee8`. `auto` uses that palette on 14 February (UTC). 14 February stays `valentine` even when it falls inside a Lunar New Year window, so 14 February 2029 is `valentine` and that year's Lunar New Year days are 13 and 15 February (2026-11-10).
 - Optional `calendar_json` action input. When set to a workspace-relative contribution calendar JSON path (same shape as `sample/contributions.json` / `demo/contributions.json`), the composite action passes it to `generate.py --input` and skips the GitHub API, so `token` is unused. `github_user_name` stays required and still overrides the JSON username label. Omit `calendar_json` to keep fetching the live calendar (2026-11-07).
 
 ### Changed

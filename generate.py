@@ -10,6 +10,7 @@ Examples:
   python3 generate.py --input sample/contributions.json --out dist --palette christmas
   python3 generate.py --input sample/contributions.json --out dist --palette newyear
   python3 generate.py --input sample/contributions.json --out dist --palette lunarnewyear
+  python3 generate.py --input sample/contributions.json --out dist --palette valentine
   python3 generate.py --input sample/contributions.json --out dist --palette auto
 """
 

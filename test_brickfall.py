@@ -34,6 +34,8 @@ from brickfall import (  # noqa: E402
     LUNAR_NEW_YEAR_PALETTES,
     LUNAR_NEW_YEAR_SPAN_DAYS,
     NEWYEAR_PALETTES,
+    VALENTINE_DAY,
+    VALENTINE_PALETTES,
     ORIENTATIONS,
     PALETTE_CATALOG,
     PALETTE_NAMES,
@@ -1492,11 +1494,16 @@ def _contrast(left: str, right: str) -> float:
 
 
 def _lunar_window() -> tuple[date, ...]:
-    """Festival day plus the following days, using the catalog's span."""
+    """Festival day plus the following days, using the catalog's span.
+
+    14 February stays valentine, so that day is left out of the window.
+    """
     return tuple(
-        anchor + timedelta(days=offset)
+        day
         for anchor in LUNAR_NEW_YEAR_DATES
         for offset in range(LUNAR_NEW_YEAR_SPAN_DAYS)
+        for day in (anchor + timedelta(days=offset),)
+        if (day.month, day.day) != VALENTINE_DAY
     )
 
 
@@ -1509,17 +1516,19 @@ class PaletteTests(unittest.TestCase):
     def test_parse_palette_names(self) -> None:
         lunar_days = (
             "17-19 February 2026, 6-8 February 2027, 26-28 January 2028, "
-            "13-15 February 2029, 3-5 February 2030, 23-25 January 2031, "
-            "11-13 February 2032, 31 January-2 February 2033, "
-            "19-21 February 2034, and 8-10 February 2035"
+            "13 February 2029, 15 February 2029, 3-5 February 2030, "
+            "23-25 January 2031, 11-13 February 2032, "
+            "31 January-2 February 2033, 19-21 February 2034, and "
+            "8-10 February 2035"
         )
         hint = (
             "Use default for the usual green graph, halloween for GitHub's Halloween "
             "colors, christmas for Coolors' popular Christmas palette, newyear for "
-            "Color Hunt's New Year gold palette, lunarnewyear for SchemeColor's "
+            "Color Hunt's New Year gold palette, valentine for SchemeColor's "
+            "Valentine's Hearts palette, lunarnewyear for SchemeColor's "
             "Chinese gold and red palette, or auto to use halloween "
             "on 31 October (UTC), christmas on 24-26 December (UTC), newyear on "
-            "1 January (UTC), lunarnewyear on "
+            "1 January (UTC), valentine on 14 February (UTC), lunarnewyear on "
             + lunar_days
             + " (UTC), and default every other day."
         )
@@ -1529,6 +1538,7 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(parse_palette(" Halloween "), "halloween")
         self.assertEqual(parse_palette(" Christmas "), "christmas")
         self.assertEqual(parse_palette(" NewYear "), "newyear")
+        self.assertEqual(parse_palette(" Valentine "), "valentine")
         self.assertEqual(parse_palette(" LunarNewYear "), "lunarnewyear")
         self.assertEqual(parse_palette("AUTO"), "auto")
         for bad in ("", " ", "green", "seasonal", "winter", "none", "0", None, 1, True):
@@ -1539,10 +1549,12 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("halloween", message)
             self.assertIn("christmas", message)
             self.assertIn("newyear", message)
+            self.assertIn("valentine", message)
             self.assertIn("lunarnewyear", message)
             self.assertIn("31 October", message)
             self.assertIn("24-26 December", message)
             self.assertIn("1 January", message)
+            self.assertIn("14 February", message)
             self.assertIn("17-19 February 2026", message)
 
     def test_auto_palette_is_halloween_only_on_october_31(self) -> None:
@@ -1585,13 +1597,38 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(resolve_palette("default", date(2026, 1, 1)), "default")
         self.assertEqual(resolve_palette("christmas", date(2026, 1, 1)), "christmas")
 
+    def test_auto_palette_is_valentine_only_on_february_14(self) -> None:
+        """14 February is valentine every year, including 2029.
+
+        Forcing ``valentine`` does not follow the date. Adjacent days stay
+        on the green graph unless they are in a Lunar New Year window.
+        13 and 15 February 2029 stay lunarnewyear.
+        """
+        for year in (2020, 2024, 2025, 2026, 2028, 2029, 2036):
+            self.assertEqual(resolve_palette("auto", date(year, 2, 14)), "valentine")
+        self.assertEqual(resolve_palette("auto", date(2026, 2, 13)), "default")
+        self.assertEqual(resolve_palette("auto", date(2026, 2, 15)), "default")
+        self.assertEqual(resolve_palette("auto", date(2029, 2, 12)), "default")
+        self.assertEqual(resolve_palette("auto", date(2029, 2, 13)), "lunarnewyear")
+        self.assertEqual(resolve_palette("auto", date(2029, 2, 14)), "valentine")
+        self.assertEqual(resolve_palette("auto", date(2029, 2, 15)), "lunarnewyear")
+        self.assertEqual(resolve_palette("auto", date(2029, 2, 16)), "default")
+        self.assertEqual(resolve_palette("valentine", date(2026, 2, 15)), "valentine")
+        self.assertEqual(resolve_palette("valentine", date(2026, 12, 25)), "valentine")
+        self.assertEqual(resolve_palette("default", date(2026, 2, 14)), "default")
+        self.assertEqual(resolve_palette("lunarnewyear", date(2029, 2, 14)), "lunarnewyear")
+        self.assertEqual(resolve_palette("newyear", date(2026, 2, 14)), "newyear")
+
     def test_auto_palette_is_lunar_new_year_on_the_festival_and_the_next_two_days(self) -> None:
         """The tabulated UTC day and the two days after it select lunarnewyear.
 
         Christmas is three days, so Lunar New Year uses that same length.
-        1 January stays newyear. The day before the window and the day after
-        it stay on the green graph. 2025 and 2036 are outside the table,
-        including 29 January 2025, which is that year's Lunar New Year.
+        1 January stays newyear. 14 February stays valentine, including
+        14 February 2029, which would otherwise fall in the window. The
+        day before the window and the day after it stay on the green
+        graph, except when that day is Valentine's Day. 2025 and 2036
+        are outside the table, including 29 January 2025, which is that
+        year's Lunar New Year.
         """
         self.assertEqual(LUNAR_NEW_YEAR_SPAN_DAYS, 3)
         self.assertEqual(
@@ -1612,13 +1649,23 @@ class PaletteTests(unittest.TestCase):
         for anchor in LUNAR_NEW_YEAR_DATES:
             self.assertEqual(resolve_palette("auto", date(anchor.year, 1, 1)), "newyear", anchor)
             self.assertEqual(resolve_palette("auto", date(anchor.year, 1, 2)), "default", anchor)
-            self.assertEqual(resolve_palette("auto", anchor - timedelta(days=1)), "default", anchor)
+            before = anchor - timedelta(days=1)
+            if (before.month, before.day) == VALENTINE_DAY:
+                self.assertEqual(resolve_palette("auto", before), "valentine", before)
+            else:
+                self.assertEqual(resolve_palette("auto", before), "default", before)
             for offset in range(LUNAR_NEW_YEAR_SPAN_DAYS):
                 day = anchor + timedelta(days=offset)
                 self.assertNotEqual((day.month, day.day), (1, 1), day)
-                self.assertEqual(resolve_palette("auto", day), "lunarnewyear", day)
+                if (day.month, day.day) == VALENTINE_DAY:
+                    self.assertEqual(resolve_palette("auto", day), "valentine", day)
+                else:
+                    self.assertEqual(resolve_palette("auto", day), "lunarnewyear", day)
             after = anchor + timedelta(days=LUNAR_NEW_YEAR_SPAN_DAYS)
-            self.assertEqual(resolve_palette("auto", after), "default", after)
+            if (after.month, after.day) == VALENTINE_DAY:
+                self.assertEqual(resolve_palette("auto", after), "valentine", after)
+            else:
+                self.assertEqual(resolve_palette("auto", after), "default", after)
         # 2033 starts on 31 January, so the window crosses into February.
         self.assertEqual(resolve_palette("auto", date(2033, 1, 30)), "default")
         self.assertEqual(resolve_palette("auto", date(2033, 1, 31)), "lunarnewyear")
@@ -1626,6 +1673,8 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(resolve_palette("auto", date(2033, 2, 2)), "lunarnewyear")
         self.assertEqual(resolve_palette("auto", date(2033, 2, 3)), "default")
         self.assertEqual(resolve_palette("auto", date(2033, 1, 1)), "newyear")
+        self.assertEqual(resolve_palette("auto", date(2025, 2, 14)), "valentine")
+        self.assertEqual(resolve_palette("auto", date(2036, 2, 14)), "valentine")
         # Same month-day in a year the table does not list stays green.
         # 29 January 2025 is Lunar New Year for 2025.
         for outside in (
@@ -1663,8 +1712,9 @@ class PaletteTests(unittest.TestCase):
         """Every UTC day of a common year and a leap year matches the catalog.
 
         31 October is halloween. 24-26 December is christmas. 1 January is
-        newyear. 2023 and 2024 are outside the Lunar New Year table, so
-        31 December, 2 January, and 29 February stay on the green graph.
+        newyear. 14 February is valentine. 2023 and 2024 are outside the
+        Lunar New Year table, so 31 December, 2 January, and 29 February
+        stay on the green graph.
         """
         lunar_dates = _lunar_window()
         self.assertEqual(
@@ -1674,12 +1724,13 @@ class PaletteTests(unittest.TestCase):
                 ("halloween", ((10, 31),), ()),
                 ("christmas", ((12, 24), (12, 25), (12, 26)), ()),
                 ("newyear", ((1, 1),), ()),
+                ("valentine", (VALENTINE_DAY,), ()),
                 ("lunarnewyear", (), lunar_dates),
             ],
         )
         self.assertEqual(
             PALETTE_NAMES,
-            ("default", "halloween", "christmas", "newyear", "lunarnewyear", "auto"),
+            ("default", "halloween", "christmas", "newyear", "valentine", "lunarnewyear", "auto"),
         )
         self.assertEqual(
             AUTO_HOLIDAYS,
@@ -1687,6 +1738,7 @@ class PaletteTests(unittest.TestCase):
                 ("halloween", ((10, 31),), ()),
                 ("christmas", ((12, 24), (12, 25), (12, 26)), ()),
                 ("newyear", ((1, 1),), ()),
+                ("valentine", (VALENTINE_DAY,), ()),
                 ("lunarnewyear", (), lunar_dates),
             ),
         )
@@ -1694,6 +1746,7 @@ class PaletteTests(unittest.TestCase):
         self.assertIs(PALETTE_TABLES["halloween"], HALLOWEEN_PALETTES)
         self.assertIs(PALETTE_TABLES["christmas"], CHRISTMAS_PALETTES)
         self.assertIs(PALETTE_TABLES["newyear"], NEWYEAR_PALETTES)
+        self.assertIs(PALETTE_TABLES["valentine"], VALENTINE_PALETTES)
         self.assertIs(PALETTE_TABLES["lunarnewyear"], LUNAR_NEW_YEAR_PALETTES)
         self.assertEqual(format_auto_days(((10, 31),)), "31 October")
         self.assertEqual(format_auto_days(((12, 26), (12, 24), (12, 25))), "24-26 December")
@@ -1731,7 +1784,7 @@ class PaletteTests(unittest.TestCase):
             while day <= last:
                 expected = rules.get((day.month, day.day), "default")
                 self.assertEqual(resolve_palette("auto", day), expected, day.isoformat())
-                for concrete in ("default", "halloween", "christmas", "newyear", "lunarnewyear"):
+                for concrete in ("default", "halloween", "christmas", "newyear", "valentine", "lunarnewyear"):
                     self.assertEqual(resolve_palette(concrete, day), concrete, day.isoformat())
                 day += timedelta(days=1)
         self.assertEqual(resolve_palette("auto", date(2024, 2, 29)), "default")
@@ -1960,6 +2013,43 @@ class PaletteTests(unittest.TestCase):
                 self.assertNotEqual(gold[level], CHRISTMAS_PALETTES[theme]["levels"][level])
             self.assertIn('href="#b' + theme[0], newyear)
 
+    def test_valentine_colors_are_the_schemecolor_hearts_scale(self) -> None:
+        """SchemeColor Valentine's Hearts levels 1-4, lightest to darkest.
+
+        The four source colors are used exactly. Light runs lightest to
+        darkest and dark runs the other way. Level 0 stays the empty
+        cell. The other holiday colors stay off this graph.
+        """
+        calendar = _tiny_calendar()
+        pieces = pieces_for_calendar(calendar)
+        expected = {
+            "light": ("#eff2f5", "#f7aee8", "#fd647c", "#f6383a", "#d81a37"),
+            "dark": ("#151b23", "#d81a37", "#f6383a", "#fd647c", "#f7aee8"),
+        }
+        source = ("#f7aee8", "#fd647c", "#f6383a", "#d81a37")
+        for theme in ("light", "dark"):
+            plain = render_svg(calendar, pieces, theme)
+            valentine = render_svg(calendar, pieces, theme, palette="valentine")
+            self.assertNotEqual(plain, valentine)
+            green = PALETTES[theme]["levels"]
+            hearts = VALENTINE_PALETTES[theme]["levels"]
+            self.assertEqual(hearts, expected[theme])
+            self.assertEqual(hearts[1:], source if theme == "light" else tuple(reversed(source)))
+            self.assertEqual(len(hearts), 5)
+            self.assertEqual(len(set(hearts)), 5)
+            self.assertEqual(green[0], hearts[0])
+            self.assertEqual(VALENTINE_PALETTES[theme]["text"], PALETTES[theme]["text"])
+            self.assertEqual(VALENTINE_PALETTES[theme]["border"], PALETTES[theme]["border"])
+            self.assertIn(f'fill="{green[0]}"', valentine)
+            for level in range(1, 5):
+                self.assertIn(f'fill="{hearts[level]}"', valentine)
+                self.assertNotIn(f'fill="{green[level]}"', valentine)
+                self.assertNotEqual(hearts[level], HALLOWEEN_PALETTES[theme]["levels"][level])
+                self.assertNotEqual(hearts[level], CHRISTMAS_PALETTES[theme]["levels"][level])
+                self.assertNotEqual(hearts[level], NEWYEAR_PALETTES[theme]["levels"][level])
+                self.assertNotEqual(hearts[level], LUNAR_NEW_YEAR_PALETTES[theme]["levels"][level])
+            self.assertIn('href="#b' + theme[0], valentine)
+
     def test_lunar_new_year_colors_are_the_schemecolor_gold_and_red(self) -> None:
         """SchemeColor Chinese Gold & Red levels 1-4, lightest to darkest.
 
@@ -1997,6 +2087,7 @@ class PaletteTests(unittest.TestCase):
                 self.assertNotEqual(festive[level], HALLOWEEN_PALETTES[theme]["levels"][level])
                 self.assertNotEqual(festive[level], CHRISTMAS_PALETTES[theme]["levels"][level])
                 self.assertNotEqual(festive[level], NEWYEAR_PALETTES[theme]["levels"][level])
+                self.assertNotEqual(festive[level], VALENTINE_PALETTES[theme]["levels"][level])
             self.assertIn('href="#b' + theme[0], lunar)
 
     def test_cli_palette_flag_selects_halloween_without_changing_the_default(self) -> None:
@@ -2183,6 +2274,57 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("2026-02-17", readme)
             self.assertIn("2035-02-08", readme)
 
+    def test_cli_palette_flag_selects_valentine(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (3, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            folder = Path(tmp) / "valentine"
+            proc = _run_generate(
+                [
+                    "--input",
+                    str(source),
+                    "--out",
+                    str(folder),
+                    "--seed",
+                    "0",
+                    "--palette",
+                    "Valentine",
+                ],
+                env=os.environ.copy(),
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            light = (folder / "tetris-contrib.svg").read_text(encoding="utf-8")
+            dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
+            for color in ("#f7aee8", "#fd647c", "#f6383a", "#d81a37"):
+                self.assertIn(f'fill="{color}"', light)
+                self.assertIn(f'fill="{color}"', dark)
+            self.assertIn('fill="#eff2f5"', light)
+            self.assertIn('fill="#151b23"', dark)
+            self.assertNotIn('fill="#aceebb"', light)
+            self.assertNotIn('fill="#ebc862"', light)
+            self.assertNotIn('fill="#f9e6a8"', light)
+            self.assertNotIn('fill="#a7c957"', light)
+            self.assertNotIn('fill="#56d364"', dark)
+            self.assertNotIn('fill="#4d2a00"', dark)
+            self.assertNotIn('fill="#830010"', dark)
+            action = (ROOT / "action.yml").read_text(encoding="utf-8")
+            self.assertIn("valentine", action)
+            self.assertIn("14 February", action)
+            self.assertIn("https://www.schemecolor.com/valentines-hearts.php", action)
+            readme = (ROOT / "README.md").read_text(encoding="utf-8")
+            self.assertIn("valentine", readme)
+            self.assertIn("https://www.schemecolor.com/valentines-hearts.php", readme)
+            self.assertIn("#f7aee8", readme)
+            self.assertIn("#d81a37", readme)
+
     def test_cli_auto_palette_follows_injected_date_not_the_clock(self) -> None:
         import json
 
@@ -2235,6 +2377,14 @@ class PaletteTests(unittest.TestCase):
             outside_table = render("lunar-2025", date(2025, 2, 17), "auto")
             january_in_table_year = render("lunar-jan1", date(2031, 1, 1), "auto")
             forced_lunar = render("forced-lunar", date(2026, 11, 1), "lunarnewyear")
+            valentine_day = render("feb14", date(2026, 2, 14), "auto")
+            valentine_leap = render("feb14-2024", date(2024, 2, 14), "AUTO")
+            valentine_2029 = render("feb14-2029", date(2029, 2, 14), "auto")
+            before_valentine = render("feb13-2026", date(2026, 2, 13), "auto")
+            after_valentine = render("feb15-2026", date(2026, 2, 15), "auto")
+            lunar_2029_before = render("feb13-2029", date(2029, 2, 13), "auto")
+            lunar_2029_after = render("feb15-2029", date(2029, 2, 15), "auto")
+            forced_valentine = render("forced-valentine", date(2026, 11, 1), "valentine")
 
             def is_halloween(pair: tuple[str, str]) -> bool:
                 light, dark = pair
@@ -2255,6 +2405,10 @@ class PaletteTests(unittest.TestCase):
             def is_lunar(pair: tuple[str, str]) -> bool:
                 light, dark = pair
                 return 'fill="#ebc862"' in light and 'fill="#830010"' in dark and 'fill="#c50100"' in light
+
+            def is_valentine(pair: tuple[str, str]) -> bool:
+                light, dark = pair
+                return 'fill="#f7aee8"' in light and 'fill="#d81a37"' in dark and 'fill="#fd647c"' in light
 
             self.assertTrue(is_halloween(halloween_day))
             self.assertTrue(is_green(ordinary_day))
@@ -2305,6 +2459,27 @@ class PaletteTests(unittest.TestCase):
             self.assertFalse(is_lunar(new_years_day))
             self.assertFalse(is_newyear(lunar_day))
             self.assertFalse(is_christmas(lunar_day))
+            self.assertTrue(is_valentine(valentine_day))
+            self.assertTrue(is_valentine(valentine_leap))
+            self.assertTrue(is_valentine(valentine_2029))
+            self.assertEqual(valentine_day, valentine_leap)
+            self.assertEqual(valentine_day, valentine_2029)
+            self.assertEqual(forced_valentine, valentine_day)
+            self.assertTrue(is_green(before_valentine))
+            self.assertTrue(is_green(after_valentine))
+            self.assertEqual(before_valentine, ordinary_day)
+            self.assertEqual(after_valentine, ordinary_day)
+            self.assertTrue(is_lunar(lunar_2029_before))
+            self.assertTrue(is_lunar(lunar_2029_after))
+            self.assertEqual(lunar_2029_before, lunar_day)
+            self.assertFalse(is_lunar(valentine_2029))
+            self.assertFalse(is_valentine(lunar_2029_before))
+            self.assertFalse(is_valentine(lunar_2029_after))
+            self.assertFalse(is_valentine(lunar_day))
+            self.assertFalse(is_green(valentine_day))
+            self.assertFalse(is_newyear(valentine_day))
+            self.assertFalse(is_christmas(valentine_day))
+            self.assertNotEqual(valentine_day, lunar_day)
 
     def test_cli_rejects_unknown_palette_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2331,10 +2506,12 @@ class PaletteTests(unittest.TestCase):
                 self.assertIn("halloween", proc.stderr)
                 self.assertIn("christmas", proc.stderr)
                 self.assertIn("newyear", proc.stderr)
+                self.assertIn("valentine", proc.stderr)
                 self.assertIn("lunarnewyear", proc.stderr)
                 self.assertIn("31 October", proc.stderr)
                 self.assertIn("24-26 December", proc.stderr)
                 self.assertIn("1 January", proc.stderr)
+                self.assertIn("14 February", proc.stderr)
                 self.assertIn("17-19 February 2026", proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
                 self.assertNotIn("was not found", proc.stderr)
