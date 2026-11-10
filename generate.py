@@ -11,6 +11,7 @@ Examples:
   python3 generate.py --input sample/contributions.json --out dist --palette newyear
   python3 generate.py --input sample/contributions.json --out dist --palette lunarnewyear
   python3 generate.py --input sample/contributions.json --out dist --palette valentine
+  python3 generate.py --input sample/contributions.json --out dist --palette lunarnewyear>valentine
   python3 generate.py --input sample/contributions.json --out dist --palette auto
 """
 
@@ -29,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from brickfall import (  # noqa: E402
     PALETTE_NAMES,
+    PALETTE_TABLES,
     CalendarParseError,
     GraphQLError,
     calendar_from_json,
@@ -93,12 +95,18 @@ def parse_palette(raw: object) -> str:
 
     Concrete names and ``auto`` match ``PALETTE_NAMES``. ``auto`` follows
     ``PALETTE_CATALOG`` (UTC month-days and year-specific dates); every other
-    day stays on default. The rejection sentence comes from ``palette_hint``.
+    day stays on default. A fade such as ``lunarnewyear>valentine`` is also
+    accepted. The rejection sentence comes from ``palette_hint``.
     """
     hint = palette_hint()
     if not isinstance(raw, str):
         raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
     value = raw.strip().lower()
+    if ">" in value:
+        start, end = (part.strip() for part in value.split(">", 1))
+        if start in PALETTE_TABLES and end in PALETTE_TABLES and start != end:
+            return f"{start}>{end}"
+        raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
     if value not in PALETTE_NAMES:
         raise InputError(f"palette (--palette) is {raw!r}, which is not a known palette. {hint}")
     return value

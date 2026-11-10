@@ -163,11 +163,29 @@ LUNAR_NEW_YEAR_DATES: tuple[date, ...] = (
 # Christmas covers three UTC days (24-26 December). Lunar New Year uses
 # that same length: the tabulated day and the two UTC days after it.
 # The earliest tabulated day is 23 January, so the window never includes
-# 1 January and does not overlap ``newyear``. 14 February stays
-# ``valentine``, so 14 February 2029 is left out of the window and that
-# year is 13 and 15 February.
+# 1 January and does not overlap ``newyear``. If a day in the window is
+# also a Western holiday, such as 14 February 2029 (Valentine's Day),
+# ``auto`` still lists both dates and fades from this palette to the
+# Western one.
 LUNAR_NEW_YEAR_SPAN_DAYS = 3
 VALENTINE_DAY = (2, 14)
+
+@dataclass(frozen=True)
+class PaletteTransition:
+    """A color fade from one concrete palette to another.
+
+    ``auto`` returns this when a Chinese traditional festival and a
+    Western holiday share a UTC day. The graph starts in ``start`` and
+    fades into ``end``. The CLI form is ``start>end``, for example
+    ``lunarnewyear>valentine``.
+    """
+
+    start: str
+    end: str
+
+    def __str__(self) -> str:
+        return f"{self.start}>{self.end}"
+
 
 @dataclass(frozen=True)
 class PaletteSpec:
@@ -177,13 +195,18 @@ class PaletteSpec:
     rejected. ``auto_days`` is the UTC (month, day) pairs ``auto`` paints with
     this palette every year. ``auto_dates`` is the UTC calendar dates it
     paints in particular years, for a holiday that moves. Empty means
-    ``auto`` never selects that field.
+    ``auto`` never selects that field. ``tradition`` is ``chinese`` for a
+    Chinese traditional festival, ``western`` for a Western holiday, or
+    ``none`` for the default green graph. When a Chinese date and a
+    Western date coincide, ``auto`` fades from the Chinese palette to
+    the Western one.
     """
 
     themes: dict[str, dict[str, object]]
     summary: str
     auto_days: tuple[tuple[int, int], ...] = ()
     auto_dates: tuple[date, ...] = ()
+    tradition: str = "western"
 
 
 def _holiday_window(
@@ -214,9 +237,11 @@ def _holiday_window(
 # and is the fallback, so it lists no days. To add a holiday, append one
 # entry with its light and dark scales, the phrase for the error text, and
 # either the UTC month-days it covers every year or the UTC dates for a
-# holiday that moves. Each calendar day belongs to one palette.
+# holiday that moves. A Chinese festival and a Western holiday may share
+# a calendar day; ``auto`` then fades from the Chinese palette to the
+# Western one. Two holidays of the same tradition cannot share a day.
 PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
-    ("default", PaletteSpec(PALETTES, "the usual green graph")),
+    ("default", PaletteSpec(PALETTES, "the usual green graph", tradition="none")),
     (
         "halloween",
         PaletteSpec(HALLOWEEN_PALETTES, "GitHub's Halloween colors", ((10, 31),)),
@@ -250,27 +275,42 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
         PaletteSpec(
             LUNAR_NEW_YEAR_PALETTES,
             "SchemeColor's Chinese gold and red palette",
-            auto_dates=_holiday_window(
-                LUNAR_NEW_YEAR_DATES,
-                LUNAR_NEW_YEAR_SPAN_DAYS,
-                skip=(VALENTINE_DAY,),
-            ),
+            auto_dates=_holiday_window(LUNAR_NEW_YEAR_DATES, LUNAR_NEW_YEAR_SPAN_DAYS),
+            tradition="chinese",
         ),
     ),
 )
 
 
-def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> None:
+def _fade_or_conflict(left: str, right: str, traditions: dict[str, str], label: str) -> PaletteTransition:
+    """Return a Chinese-to-Western fade, or reject two holidays of the same tradition."""
+    chinese = [name for name in (left, right) if traditions[name] == "chinese"]
+    western = [name for name in (left, right) if traditions[name] == "western"]
+    if len(set((left, right))) == 2 and len(chinese) == 1 and len(western) == 1:
+        return PaletteTransition(chinese[0], western[0])
+    raise ValueError(
+        f"auto date {label} is listed for {left!r} and {right!r}. "
+        "Each calendar day belongs to one palette, unless a Chinese "
+        "traditional festival and a Western holiday share it."
+    )
+
+
+def _validate_palette_catalog(
+    catalog: tuple[tuple[str, PaletteSpec], ...],
+) -> tuple[dict[tuple[int, int], PaletteTransition], dict[date, PaletteTransition]]:
     """Reject a catalog ``auto`` could not apply, before any SVG is drawn.
 
     Every concrete palette keeps level 0 as the neutral empty-cell color
-    from the default graph.
+    from the default graph. A Chinese festival and a Western holiday may
+    share a UTC day; that pair becomes a color fade. Any other overlap
+    is rejected.
     """
     if (
         not catalog
         or catalog[0][0] != "default"
         or catalog[0][1].auto_days
         or catalog[0][1].auto_dates
+        or catalog[0][1].tradition != "none"
     ):
         raise ValueError(
             "the palette catalog must start with default, and default cannot list auto days "
@@ -279,6 +319,9 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
     seen_names: set[str] = set()
     seen_days: dict[tuple[int, int], str] = {}
     seen_dates: dict[date, str] = {}
+    traditions: dict[str, str] = {}
+    day_fades: dict[tuple[int, int], PaletteTransition] = {}
+    date_fades: dict[date, PaletteTransition] = {}
     # Level 0 of the default graph. Holidays may recolor active cells only.
     neutral_level0: dict[str, object] = {}
     for name, spec in catalog:
@@ -292,6 +335,16 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
         if name in seen_names:
             raise ValueError(f"palette name {name!r} is listed more than once.")
         seen_names.add(name)
+        if spec.tradition not in {"none", "western", "chinese"}:
+            raise ValueError(
+                f"palette {name!r} tradition is {spec.tradition!r}. "
+                "Use 'chinese', 'western', or 'none'."
+            )
+        if name == "default" and spec.tradition != "none":
+            raise ValueError("the default palette tradition must be 'none'.")
+        if name != "default" and spec.tradition == "none":
+            raise ValueError(f"palette {name!r} cannot use tradition 'none'. That is reserved for default.")
+        traditions[name] = spec.tradition
         if not isinstance(spec.summary, str) or spec.summary.strip() == "":
             raise ValueError(f"palette {name!r} needs a short summary for the error text.")
         if set(spec.themes) != {"light", "dark"}:
@@ -321,15 +374,13 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
                 ) from None
             previous = seen_days.get((month, day))
             if previous is not None:
-                raise ValueError(
-                    f"auto date {(month, day)!r} is listed for {previous!r} and {name!r}. "
-                    "Each month-day belongs to one palette."
+                day_fades[(month, day)] = _fade_or_conflict(
+                    previous, name, traditions, repr((month, day))
                 )
-            for when, owner in seen_dates.items():
+            for when, owner in list(seen_dates.items()):
                 if (when.month, when.day) == (month, day) and owner != name:
-                    raise ValueError(
-                        f"auto date {when.isoformat()} is listed for {owner!r} and {(month, day)!r} "
-                        f"repeats every year for {name!r}. Each calendar day belongs to one palette."
+                    date_fades[when] = _fade_or_conflict(
+                        owner, name, traditions, when.isoformat()
                     )
             seen_days[(month, day)] = name
         for when in spec.auto_dates:
@@ -340,20 +391,19 @@ def _validate_palette_catalog(catalog: tuple[tuple[str, PaletteSpec], ...]) -> N
                 )
             previous_date = seen_dates.get(when)
             if previous_date is not None:
-                raise ValueError(
-                    f"auto date {when.isoformat()} is listed for {previous_date!r} and {name!r}. "
-                    "Each calendar day belongs to one palette."
+                date_fades[when] = _fade_or_conflict(
+                    previous_date, name, traditions, when.isoformat()
                 )
             owner = seen_days.get((when.month, when.day))
             if owner is not None and owner != name:
-                raise ValueError(
-                    f"auto date {when.isoformat()} is listed for {name!r} and {(when.month, when.day)!r} "
-                    f"repeats every year for {owner!r}. Each calendar day belongs to one palette."
+                date_fades[when] = _fade_or_conflict(
+                    owner, name, traditions, when.isoformat()
                 )
             seen_dates[when] = name
+    return day_fades, date_fades
 
 
-_validate_palette_catalog(PALETTE_CATALOG)
+AUTO_TRANSITIONS_DAYS, AUTO_TRANSITIONS_DATES = _validate_palette_catalog(PALETTE_CATALOG)
 
 # Concrete palettes render_svg can paint. ``auto`` is resolved before this.
 PALETTE_TABLES: dict[str, dict[str, dict[str, object]]] = {
@@ -452,6 +502,17 @@ def format_auto_dates(dates: Sequence[date]) -> str:
     return _join_phrases(parts)
 
 
+def _fade_help() -> str:
+    """Sentence describing Chinese-to-Western fades, or empty if none exist."""
+    if not AUTO_TRANSITIONS_DAYS and not AUTO_TRANSITIONS_DATES:
+        return ""
+    return (
+        " When a Chinese traditional festival and a Western holiday share a UTC day, "
+        "auto starts on the Chinese palette and fades into the Western palette. "
+        "A value such as lunarnewyear>valentine paints that fade on any day."
+    )
+
+
 def palette_hint() -> str:
     """Sentence appended when a palette name is rejected.
 
@@ -465,7 +526,10 @@ def palette_hint() -> str:
             auto_parts.append(f"{name} on {format_auto_days(spec.auto_days)} (UTC)")
         if spec.auto_dates:
             auto_parts.append(f"{name} on {format_auto_dates(spec.auto_dates)} (UTC)")
-    return f"Use {named}, or auto to use {', '.join(auto_parts)}, and default every other day."
+    return (
+        f"Use {named}, or auto to use {', '.join(auto_parts)}, and default every other day."
+        + _fade_help()
+    )
 
 
 def palette_cli_help() -> str:
@@ -498,8 +562,12 @@ def palette_cli_help() -> str:
         )
     else:
         parts.append("auto uses default every day.")
+    fade = _fade_help().strip()
+    if fade:
+        parts.append(fade)
     parts.extend(f"{sentence}." for sentence in outside_parts)
     return " ".join(parts)
+
 
 LEVEL_NAMES = {
     "NONE": 0,
@@ -510,22 +578,35 @@ LEVEL_NAMES = {
 }
 
 
-def resolve_palette(name: str, today: date) -> str:
-    """Return the concrete palette for ``name`` on ``today``.
+def resolve_palette(name: str, today: date) -> str | PaletteTransition:
+    """Return the concrete palette, or a fade, for ``name`` on ``today``.
 
     ``default``, ``halloween``, ``christmas``, ``newyear``,
-    ``valentine``, and ``lunarnewyear`` are returned as given. ``auto``
-    follows ``PALETTE_CATALOG``: halloween on 31 October, christmas on
-    24-26 December, newyear on 1 January, valentine on 14 February, and
-    lunarnewyear on each tabulated Lunar New Year date plus the next two
-    UTC days (2026-2035), except 14 February, which stays valentine.
+    ``valentine``, and ``lunarnewyear`` are returned as given. A name
+    such as ``lunarnewyear>valentine`` becomes a ``PaletteTransition``.
+    ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October,
+    christmas on 24-26 December, newyear on 1 January, valentine on 14
+    February, and lunarnewyear on each tabulated Lunar New Year date
+    plus the next two UTC days (2026-2035). When a Chinese traditional
+    festival and a Western holiday share a UTC day, ``auto`` fades from
+    the Chinese palette to the Western one (14 February 2029 is
+    lunarnewyear fading into valentine). 1 January stays newyear.
     Every other day is ``default``, including 31 December, 2 January,
     and a Lunar New Year in a year the table does not list. ``today`` is
     the calendar day to test. This does not read the clock; pass the
     current UTC date when the caller means now.
     """
+    if ">" in name:
+        start, end = name.split(">", 1)
+        if start in PALETTE_TABLES and end in PALETTE_TABLES and start != end:
+            return PaletteTransition(start, end)
+        raise ValueError(f"unknown palette {name!r}")
     if name == "auto":
         key = (today.month, today.day)
+        if today in AUTO_TRANSITIONS_DATES:
+            return AUTO_TRANSITIONS_DATES[today]
+        if key in AUTO_TRANSITIONS_DAYS:
+            return AUTO_TRANSITIONS_DAYS[key]
         for palette, days, dates in AUTO_HOLIDAYS:
             if key in days or today in dates:
                 return palette
@@ -1381,20 +1462,87 @@ def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
     )
 
 
+def _tone_css(timeline: Timeline, speed: float = 1.0) -> str:
+    """Fade from the starting holiday colors to the ending ones.
+
+    The completed Chinese graph stays visible briefly after the last
+    brick lands, then cross-fades into the Western palette and holds
+    that end state until the existing exit fade. At 100% the colors
+    jump back to the start, which is hidden because the pieces have
+    already left. Reduced motion shows the end palette on the locked
+    graph.
+    """
+    last_delay = timeline.delays[-1] if timeline.delays else 0.0
+    settled = last_delay + timeline.fall + timeline.bounce
+    start_at = settled + 0.7
+    done_at = start_at + 1.25
+    latest_done = timeline.fade_at - 0.6
+    if done_at > latest_done:
+        done_at = max(settled + 0.45, latest_done)
+        start_at = min(start_at, max(settled + 0.25, done_at - 1.25))
+        if start_at >= done_at:
+            start_at = settled
+            done_at = min(settled + 0.8, timeline.fade_at)
+    total = timeline.total
+    duration = _fmt(_at_speed(total, speed))
+    start_pct = _percent(start_at, total)
+    done_pct = _percent(done_at, total)
+    leave_pct = _percent(timeline.fade_at, total)
+    return (
+        f".tone-start,.tone-end{{animation-duration:{duration}s;"
+        "animation-timing-function:linear;animation-iteration-count:infinite;"
+        "animation-fill-mode:backwards}"
+        ".tone-start{animation-name:tone-start}"
+        ".tone-end{animation-name:tone-end}"
+        "@keyframes tone-start{"
+        f"0%,{start_pct}%{{opacity:1}}"
+        f"{done_pct}%,{leave_pct}%{{opacity:0}}"
+        "100%{opacity:1}}"
+        "@keyframes tone-end{"
+        f"0%,{start_pct}%{{opacity:0}}"
+        f"{done_pct}%,{leave_pct}%{{opacity:1}}"
+        "100%{opacity:0}}"
+        "@media (prefers-reduced-motion:reduce){"
+        ".tone-start,.tone-end{animation:none}"
+        ".tone-start{opacity:0}"
+        ".tone-end{opacity:1}}"
+    )
+
+
+def _palette_pair(palette: str | PaletteTransition) -> tuple[str, str | None]:
+    """Return ``(start, end)`` palette names. ``end`` is set for a fade."""
+    if isinstance(palette, str) and ">" in palette:
+        start, end = palette.split(">", 1)
+        palette = PaletteTransition(start, end)
+    if isinstance(palette, PaletteTransition):
+        start, end = palette.start, palette.end
+        if start not in PALETTE_TABLES or end not in PALETTE_TABLES or start == end:
+            raise ValueError(f"unknown palette {palette!r}")
+        return start, end
+    if palette not in PALETTE_TABLES:
+        raise ValueError(f"unknown palette {palette!r}")
+    return palette, None
+
+
 def render_svg(
     cal: Calendar,
     pieces: Sequence[Piece],
     theme: str,
     *,
     speed: float = 1.0,
-    palette: str = "default",
+    palette: str | PaletteTransition = "default",
 ) -> str:
-    if palette not in PALETTE_TABLES:
-        raise ValueError(f"unknown palette {palette!r}")
-    themes = PALETTE_TABLES[palette]
+    start_name, end_name = _palette_pair(palette)
+    themes = PALETTE_TABLES[start_name]
     if theme not in themes:
         raise ValueError(f"unknown theme {theme!r}")
     chosen = themes[theme]
+    end_chosen: dict[str, object] | None = None
+    if end_name is not None:
+        end_themes = PALETTE_TABLES[end_name]
+        if theme not in end_themes:
+            raise ValueError(f"unknown theme {theme!r}")
+        end_chosen = end_themes[theme]
     text = str(chosen["text"])
     columns = cal.columns
     origin_x = 34
@@ -1409,6 +1557,17 @@ def render_svg(
     defs = []
     for level in range(5):
         defs.append(f'<g id="b{theme[0]}{level}">{_brick(level, chosen)}</g>')
+        if end_chosen is not None and level > 0:
+            defs.append(f'<g id="b{theme[0]}{level}e">{_brick(level, end_chosen)}</g>')
+
+    def _swatch(level: int, x: float | int, y: float | int) -> str:
+        start = f'<use href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
+        if end_chosen is None or level == 0:
+            return start
+        return (
+            f'<use class="tone-start" href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
+            f'<use class="tone-end" href="#b{theme[0]}{level}e" x="{x}" y="{y}" opacity="0"/>'
+        )
 
     piece_markup: list[str] = []
     counts: dict[str, int] = {}
@@ -1421,7 +1580,7 @@ def render_svg(
             level = levels[row][col]
             x = origin_x + col * STEP
             y = origin_y + row * STEP
-            cells.append(f'<use href="#b{theme[0]}{level}" x="{x}" y="{y}"/>')
+            cells.append(_swatch(level, x, y))
         joint_group = ""
         if joints:
             joint_group = f'<g class="joints" opacity="0" style="animation-delay:{delay}s">{joints}</g>'
@@ -1444,7 +1603,7 @@ def render_svg(
     for level in range(5):
         x = legend_x + 34 + level * STEP
         y = caption_y - 9
-        legend.append(f'<use href="#b{theme[0]}{level}" x="{x}" y="{y}"/>')
+        legend.append(_swatch(level, x, y))
     legend.append(f'<text x="{legend_x + 34 + 5 * STEP + 2}" y="{caption_y}">More</text>')
 
     summary = " ".join(f"{name}:{counts[name]}" for name in sorted(counts))
@@ -1454,6 +1613,8 @@ def render_svg(
         f"from {cal.start.isoformat()} to {cal.end.isoformat()}."
     )
     css = _fall_css(timeline, speed)
+    if end_name is not None:
+        css += _tone_css(timeline, speed)
     font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
