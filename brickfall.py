@@ -773,11 +773,20 @@ def calendar_from_json(payload: object) -> Calendar:
     if not isinstance(weeks, list):
         raise CalendarParseError("weeks must be a list of weeks, or an empty list.")
     days: list[Day] = []
+    seen: set[date] = set()
     for index, week in enumerate(weeks, start=1):
         if not isinstance(week, list):
             raise CalendarParseError(f"week {index} must be a list of days.")
         for raw in week:
-            days.append(_parse_day(raw))
+            parsed = _parse_day(raw)
+            # A repeated date used to load, and the later entry silently
+            # replaced the earlier one's count and level in the grid.
+            if parsed.date in seen:
+                raise CalendarParseError(
+                    f"day {parsed.date.isoformat()} appears more than once. List each date once."
+                )
+            seen.add(parsed.date)
+            days.append(parsed)
     try:
         return calendar_from_days(str(payload.get("username", "")), start, end, days)
     except ValueError as exc:
