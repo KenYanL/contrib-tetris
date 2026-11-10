@@ -21,6 +21,7 @@ and `v1.4.0` point at the 2026-11-06 release.
 
 - `calendar_json` (`--input`) is rejected before any SVG is written when the path is empty, contains `..`, is not a `.json` file, or (when the action sets `TETRIS_REQUIRE_RELATIVE`) is not workspace-relative (2026-11-08).
 - A `calendar_json` (`--input`) path whose parent is a file, or that cannot be read because of permissions, now fails with a `contrib-tetris:` message naming the path instead of a Python traceback, and no SVG is written (2026-11-09).
+- A contribution calendar JSON that lists the same date twice is rejected with a `contrib-tetris:` message naming the date. It used to load, and the later entry silently replaced the earlier day's count and level (2026-11-10).
 
 ## [v1.4.0] - 2026-11-06
 

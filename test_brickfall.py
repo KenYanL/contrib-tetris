@@ -441,6 +441,10 @@ class CalendarEdgeTests(unittest.TestCase):
             ([], ("JSON object",)),
             ({"start": start, "end": end, "weeks": ["nope"]}, ("week 1",)),
             ({"start": start, "end": end, "weeks": [["2026-10-12"]]}, ("object", "date")),
+            (
+                {"start": start, "end": end, "weeks": [[day()["weeks"][0][0]], [day(count=3)["weeks"][0][0]]]},
+                ("2026-10-12", "more than once"),
+            ),
         )
         for payload, needles in rejected:
             with self.assertRaises(CalendarParseError) as caught:
