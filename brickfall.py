@@ -1469,9 +1469,10 @@ def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
 TONE_HOLD = 0.7
 TONE_SWEEP = 1.8
 TONE_COLUMN_FADE = 0.35
-TONE_DUST_FADE = 0.6
+TONE_DUST_FADE = 0.95
 DUST_SEED = 20261110
-DUST_PER_CELL = 3
+DUST_PER_CELL = 6
+DUST_BASE = 2.0
 
 
 def _mix32(value: int) -> int:
@@ -1488,16 +1489,19 @@ def dust_specs(
     row: int,
     count: int = DUST_PER_CELL,
     seed: int = DUST_SEED,
-) -> tuple[tuple[float, float, float, float], ...]:
-    """Return ``count`` ash particles as ``(ox, oy, dx, dy)`` pixel offsets.
+) -> tuple[tuple[float, float, float, float, float, float], ...]:
+    """Return ``count`` ash particles as ``(ox, oy, dx, dy, scale, rot)``.
 
     ``ox`` and ``oy`` are positions inside the 11px cell. ``dx`` and
-    ``dy`` are the drift to the right and down as the ash falls. The
-    values are deterministic for a given cell and ``seed``.
+    ``dy`` are the drift, in pixels, as the ash is blown away: most
+    particles travel further down and to the right, and a few scatter
+    upward or sideways. ``scale`` is the size of the shared dust sprite,
+    and ``rot`` is a slight rotation in degrees. The values are
+    deterministic for a given cell and ``seed``.
     """
     if count < 0:
         raise ValueError("dust particle count cannot be negative")
-    specs: list[tuple[float, float, float, float]] = []
+    specs: list[tuple[float, float, float, float, float, float]] = []
     state = _mix32(seed ^ ((col + 1) * 0x9E3779B9) ^ ((row + 3) * 0x85EBCA6B))
     for index in range(count):
         state = _mix32(state ^ ((index + 1) * 0xC2B2AE35) ^ 0x27D4EB2D)
@@ -1508,11 +1512,36 @@ def dust_specs(
         u3 = (state & 0xFFFF) / 65535.0
         state = _mix32(state + 0x94D049BB)
         u4 = (state & 0xFFFF) / 65535.0
-        ox = 1.2 + u1 * (CELL - 3.6)
-        oy = 1.2 + u2 * (CELL - 3.6)
-        dx = 1.6 + u3 * 6.5
-        dy = 5.0 + u4 * 10.0
-        specs.append((ox, oy, dx, dy))
+        state = _mix32(state + 0xA24BAED5)
+        u5 = (state & 0xFFFF) / 65535.0
+        state = _mix32(state + 0x3C6EF372)
+        u6 = (state & 0xFFFF) / 65535.0
+        ox = 0.8 + u1 * (CELL - 2.8)
+        oy = 0.8 + u2 * (CELL - 2.8)
+        scale = 0.6 + u5 * 1.2
+        rot = -42 + u6 * 84
+        kind = index % 6
+        if kind == 3:
+            # Blown upward, usually drifting right.
+            dx = -3 + u3 * 16
+            dy = -16 + u4 * 11
+        elif kind == 4:
+            # Sideways scatter, often to the left.
+            dx = -14 + u3 * 9
+            dy = -5 + u4 * 16
+        elif kind == 2:
+            # Long throw down and to the right.
+            dx = 10 + u3 * 16
+            dy = 10 + u4 * 20
+        elif kind == 0:
+            # Heavy chunk falling further down-right.
+            dx = 6 + u3 * 14
+            dy = 14 + u4 * 16
+        else:
+            # Typical ash, still further than the first pass.
+            dx = 3 + u3 * 12
+            dy = 8 + u4 * 16
+        specs.append((ox, oy, dx, dy, scale, rot))
     return tuple(specs)
 
 
@@ -1554,8 +1583,9 @@ def _tone_css(timeline: Timeline, columns: int, speed: float = 1.0) -> str:
 
     The completed Chinese graph stays visible briefly after the last
     brick lands. Then, left to right, each week's top layer shrinks and
-    fades while a few ash particles drift down and to the right,
-    revealing the Western palette already underneath. Each column has
+    fades while ash particles blow further down, to the right, and
+    slightly off to the sides, revealing the Western palette already
+    underneath. Each column has
     its own keyframes so the stagger repeats on every loop. At 100% the
     top layer jumps back, which is hidden because the pieces have
     already left. Reduced motion shows the end palette on the locked
@@ -1570,6 +1600,7 @@ def _tone_css(timeline: Timeline, columns: int, speed: float = 1.0) -> str:
         f".tone-start,.dust{{animation-duration:{duration}s;"
         "animation-timing-function:linear;animation-iteration-count:infinite;"
         "animation-fill-mode:backwards;transform-box:fill-box;transform-origin:center}"
+        ".dust{--s:1;--rot:0deg}"
     ]
     for col in range(count):
         fade_start = start_at + col * stagger
@@ -1582,12 +1613,12 @@ def _tone_css(timeline: Timeline, columns: int, speed: float = 1.0) -> str:
         dust_pct = _percent(dust_end, total)
         parts.append(
             f"@keyframes ts{col}{{0%,{start_pct}%{{opacity:1;transform:none}}"
-            f"{done_pct}%,{leave_pct}%{{opacity:0;transform:translate(1.3px,.8px) scale(.62)}}"
+            f"{done_pct}%,{leave_pct}%{{opacity:0;transform:translate(1.6px,1.1px) scale(.55)}}"
             f"100%{{opacity:1;transform:none}}}}"
-            f"@keyframes ds{col}{{0%,{start_pct}%{{opacity:0;transform:translate(0,0)}}"
-            f"{pop_pct}%{{opacity:.9;transform:translate(0,0)}}"
-            f"{dust_pct}%,{leave_pct}%{{opacity:0;transform:translate(var(--dx),var(--dy))}}"
-            f"100%{{opacity:0;transform:translate(0,0)}}}}"
+            f"@keyframes ds{col}{{0%,{start_pct}%{{opacity:0;transform:translate(0,0) rotate(0deg) scale(var(--s))}}"
+            f"{pop_pct}%{{opacity:1;transform:translate(0,0) rotate(0deg) scale(var(--s))}}"
+            f"{dust_pct}%,{leave_pct}%{{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot)) scale(var(--s))}}"
+            f"100%{{opacity:0;transform:translate(0,0) rotate(0deg) scale(var(--s))}}}}"
             f".ts{col}{{animation-name:ts{col}}}"
             f".ds{col}{{animation-name:ds{col}}}"
         )
@@ -1652,7 +1683,7 @@ def render_svg(
             defs.append(f'<g id="b{theme[0]}{level}e">{_brick(level, end_chosen)}</g>')
             color = chosen["levels"][level]
             defs.append(
-                f'<rect id="d{theme[0]}{level}" width="1.6" height="1.6" rx="0.45" fill="{color}"/>'
+                f'<rect id="d{theme[0]}{level}" width="{_fmt(DUST_BASE)}" height="{_fmt(DUST_BASE)}" rx="0.55" fill="{color}"/>'
             )
 
     def _swatch(level: int, x: float | int, y: float | int, col: int = 0, row: int = 0) -> str:
@@ -1664,9 +1695,12 @@ def render_svg(
             f'<g class="tone-start ts{col}">{start}</g>',
         ]
         dust_id = f"d{theme[0]}{level}"
-        for ox, oy, dx, dy in dust_specs(col, row):
+        for ox, oy, dx, dy, scale, rot in dust_specs(col, row):
+            rot_text = f"{int(round(rot))}deg"
+            scale_text = f"{scale:.2f}".rstrip("0").rstrip(".") or "0"
             parts.append(
-                f'<g class="dust ds{col}" style="--dx:{_fmt(dx)}px;--dy:{_fmt(dy)}px">'
+                f'<g class="dust ds{col}" style="--dx:{_fmt(dx)}px;--dy:{_fmt(dy)}px;'
+                f'--s:{scale_text};--rot:{rot_text}">'
                 f'<use href="#{dust_id}" x="{_fmt(x + ox)}" y="{_fmt(y + oy)}"/></g>'
             )
         return "".join(parts)

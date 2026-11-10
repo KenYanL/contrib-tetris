@@ -2122,6 +2122,8 @@ class PaletteTests(unittest.TestCase):
             self.assertIn('class="dust ds', svg)
             self.assertIn("--dx:", svg)
             self.assertIn("--dy:", svg)
+            self.assertIn("--s:", svg)
+            self.assertIn("--rot:", svg)
             # Empty cells stay the shared neutral and are not faded.
             self.assertIn(f'href="#b{theme[0]}0"', svg)
             self.assertNotIn(f'href="#b{theme[0]}0e"', svg)
@@ -2151,13 +2153,24 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(light_fade.count('class="dust ds'), (filled + legend_levels) * DUST_PER_CELL)
         self.assertEqual(dust_specs(0, 0), dust_specs(0, 0, seed=DUST_SEED))
         self.assertNotEqual(dust_specs(0, 0), dust_specs(1, 0))
-        for ox, oy, dx, dy in dust_specs(0, 0):
+        for ox, oy, dx, dy, scale, rot in dust_specs(0, 0):
             self.assertGreater(ox, 0)
             self.assertLess(ox, 11)
             self.assertGreater(oy, 0)
             self.assertLess(oy, 11)
-            self.assertGreater(dx, 0)
-            self.assertGreater(dy, 0)
+            self.assertGreater(scale, 0.5)
+            self.assertLess(scale, 2.0)
+            self.assertGreaterEqual(rot, -42)
+            self.assertLessEqual(rot, 42)
+        # Every cell mixes a long down-right fall with upward or
+        # sideways scatter so the ash looks blown away, not just dropped.
+        self.assertGreater(DUST_PER_CELL, 4)
+        paths = [dust_specs(col, row) for col in range(4) for row in range(7)]
+        self.assertTrue(any(dx > 8 and dy > 10 for specs in paths for _o, _p, dx, dy, _s, _r in specs))
+        self.assertTrue(any(dy < 0 for specs in paths for _o, _p, _x, dy, _s, _r in specs))
+        self.assertTrue(any(dx < 0 for specs in paths for _o, _p, dx, _y, _s, _r in specs))
+        scales = {round(scale, 2) for specs in paths for _o, _p, _x, _y, scale, _r in specs}
+        self.assertGreater(len(scales), 4)
         # Empty cells do not get a dust sprite.
         self.assertNotIn('href="#dl0"', light_fade)
         import json
@@ -2181,6 +2194,9 @@ class PaletteTests(unittest.TestCase):
         # not a unique rule per cell.
         self.assertIn('id="dl1"', demo_svg)
         self.assertIn("--dx:", demo_svg)
+        self.assertIn("--s:", demo_svg)
+        self.assertIn("--rot:", demo_svg)
+        self.assertLess(len(demo_svg.encode("utf-8")), 250_000)
         explicit = render_svg(calendar, pieces, "light", palette="lunarnewyear>valentine")
         # resolve_palette returns the same fade object values; render_svg
         # accepts the string form too via generate, but here pass the object.
