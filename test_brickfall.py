@@ -45,6 +45,9 @@ from brickfall import (  # noqa: E402
     PaletteTransition,
     AUTO_TRANSITIONS_DATES,
     AUTO_TRANSITIONS_DAYS,
+    DUST_PER_CELL,
+    DUST_SEED,
+    dust_specs,
     SMALL_PIECES,
     TETROMINOES,
     Calendar,
@@ -2112,15 +2115,20 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("tone-start", svg)
             self.assertIn("tone-end", svg)
             self.assertIn("@keyframes ts0", svg)
-            self.assertIn("@keyframes te0", svg)
+            self.assertIn("@keyframes ds0", svg)
             self.assertIn("prefers-reduced-motion", svg)
-            self.assertIn(".tone-start{opacity:0}", svg)
+            self.assertIn(".tone-start,.dust{opacity:0}", svg)
             self.assertIn(".tone-end{opacity:1}", svg)
+            self.assertIn('class="dust ds', svg)
+            self.assertIn("--dx:", svg)
+            self.assertIn("--dy:", svg)
             # Empty cells stay the shared neutral and are not faded.
             self.assertIn(f'href="#b{theme[0]}0"', svg)
             self.assertNotIn(f'href="#b{theme[0]}0e"', svg)
-        # Colors sweep left to right: one keyframe pair per week column,
-        # and later columns start later. There is no per-cell rule.
+        # Colors sweep left to right: one crumple and dust keyframe per
+        # week column, and later columns start later. There is no per-cell
+        # keyframe rule. The Western color sits underneath; the top layer
+        # and ash particles are what animate.
         light_fade = render_svg(calendar, pieces, "light", palette=fade)
         starts = [
             (int(match.group(1)), float(match.group(2)))
@@ -2128,12 +2136,30 @@ class PaletteTests(unittest.TestCase):
         ]
         self.assertEqual([index for index, _pct in starts], list(range(calendar.columns)))
         self.assertEqual(light_fade.count("@keyframes ts"), calendar.columns)
-        self.assertEqual(light_fade.count("@keyframes te"), calendar.columns)
+        self.assertEqual(light_fade.count("@keyframes ds"), calendar.columns)
+        self.assertEqual(light_fade.count("@keyframes te"), 0)
         self.assertLess(starts[0][1], starts[-1][1])
         self.assertIn('class="tone-start ts0"', light_fade)
         self.assertIn(f'class="tone-start ts{calendar.columns - 1}"', light_fade)
         # The two-week fixture must not invent a class for a third column.
         self.assertNotIn("ts2", light_fade)
+        self.assertNotIn("ds2", light_fade)
+        # The tiny calendar has one contributed cell, so only that cell
+        # (plus the legend swatches) grows ash particles.
+        filled = sum(1 for row in range(7) for col in range(calendar.columns) if calendar.level_at(row, col) > 0)
+        legend_levels = 4
+        self.assertEqual(light_fade.count('class="dust ds'), (filled + legend_levels) * DUST_PER_CELL)
+        self.assertEqual(dust_specs(0, 0), dust_specs(0, 0, seed=DUST_SEED))
+        self.assertNotEqual(dust_specs(0, 0), dust_specs(1, 0))
+        for ox, oy, dx, dy in dust_specs(0, 0):
+            self.assertGreater(ox, 0)
+            self.assertLess(ox, 11)
+            self.assertGreater(oy, 0)
+            self.assertLess(oy, 11)
+            self.assertGreater(dx, 0)
+            self.assertGreater(dy, 0)
+        # Empty cells do not get a dust sprite.
+        self.assertNotIn('href="#dl0"', light_fade)
         import json
         demo = calendar_from_json(json.loads((ROOT / "demo" / "contributions.json").read_text(encoding="utf-8")))
         demo_svg = render_svg(demo, pieces_for_calendar(demo, seed=0), "light", palette=fade)
@@ -2146,6 +2172,15 @@ class PaletteTests(unittest.TestCase):
         self.assertLess(demo_starts[0][1], demo_starts[1][1])
         self.assertLess(demo_starts[1][1], demo_starts[-1][1])
         self.assertEqual(demo_svg.count("@keyframes ts"), demo.columns)
+        self.assertEqual(demo_svg.count("@keyframes ds"), demo.columns)
+        demo_filled = sum(
+            1 for row in range(7) for col in range(demo.columns) if demo.level_at(row, col) > 0
+        )
+        self.assertEqual(demo_svg.count('class="dust ds'), (demo_filled + 4) * DUST_PER_CELL)
+        # Particles use shared per-level sprites and per-column keyframes,
+        # not a unique rule per cell.
+        self.assertIn('id="dl1"', demo_svg)
+        self.assertIn("--dx:", demo_svg)
         explicit = render_svg(calendar, pieces, "light", palette="lunarnewyear>valentine")
         # resolve_palette returns the same fade object values; render_svg
         # accepts the string form too via generate, but here pass the object.
@@ -2465,7 +2500,8 @@ class PaletteTests(unittest.TestCase):
             dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
             for svg in (light, dark):
                 self.assertIn("tone-start", svg)
-                self.assertIn("@keyframes te0", svg)
+                self.assertIn("@keyframes ds0", svg)
+                self.assertIn('class="dust ds', svg)
             for color in ("#ebc862", "#c50100", "#f7aee8", "#d81a37"):
                 self.assertIn(f'fill="{color}"', light)
                 self.assertIn(f'fill="{color}"', dark)
@@ -2631,6 +2667,8 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("tone-start", fade_light)
             self.assertIn("tone-end", fade_light)
             self.assertIn("@keyframes ts0", fade_light)
+            self.assertIn("@keyframes ds0", fade_light)
+            self.assertIn('class="dust ds', fade_light)
             self.assertIn('fill="#ebc862"', fade_light)
             self.assertIn('fill="#f7aee8"', fade_light)
             self.assertIn('fill="#830010"', fade_dark)

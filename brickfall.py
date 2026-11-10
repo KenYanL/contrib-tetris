@@ -1463,77 +1463,138 @@ def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
 
 
 # After the bricks settle, hold the Chinese palette, then sweep from
-# left to right. The whole wave is about 1.8s; each week column
-# cross-fades in 0.35s. Later columns start later, so the change
-# reads as a wave instead of the whole graph fading at once.
+# left to right. The whole wave is about 1.8s; each week column's top
+# layer crumbles in 0.35s, and ash particles fall for 0.6s. Later
+# columns start later, so the change reads as a wave.
 TONE_HOLD = 0.7
 TONE_SWEEP = 1.8
 TONE_COLUMN_FADE = 0.35
+TONE_DUST_FADE = 0.6
+DUST_SEED = 20261110
+DUST_PER_CELL = 3
 
 
-def _tone_schedule(timeline: Timeline, columns: int) -> tuple[float, float, float]:
-    """Return ``(start_at, stagger, column_fade)`` in unscaled seconds.
+def _mix32(value: int) -> int:
+    """A small integer mix used for deterministic ash particle offsets."""
+    value &= 0xFFFFFFFF
+    value ^= (value << 13) & 0xFFFFFFFF
+    value ^= value >> 17
+    value ^= (value << 5) & 0xFFFFFFFF
+    return value & 0xFFFFFFFF
 
-    ``start_at`` is when column 0 begins to fade. Column ``i`` starts
-    ``i * stagger`` later and finishes ``column_fade`` after that.
-    The last column finishes about ``TONE_SWEEP`` after column 0 starts,
-    and still before the bricks leave.
+
+def dust_specs(
+    col: int,
+    row: int,
+    count: int = DUST_PER_CELL,
+    seed: int = DUST_SEED,
+) -> tuple[tuple[float, float, float, float], ...]:
+    """Return ``count`` ash particles as ``(ox, oy, dx, dy)`` pixel offsets.
+
+    ``ox`` and ``oy`` are positions inside the 11px cell. ``dx`` and
+    ``dy`` are the drift to the right and down as the ash falls. The
+    values are deterministic for a given cell and ``seed``.
+    """
+    if count < 0:
+        raise ValueError("dust particle count cannot be negative")
+    specs: list[tuple[float, float, float, float]] = []
+    state = _mix32(seed ^ ((col + 1) * 0x9E3779B9) ^ ((row + 3) * 0x85EBCA6B))
+    for index in range(count):
+        state = _mix32(state ^ ((index + 1) * 0xC2B2AE35) ^ 0x27D4EB2D)
+        u1 = (state & 0xFFFF) / 65535.0
+        state = _mix32(state + 0x9E3779B9)
+        u2 = (state & 0xFFFF) / 65535.0
+        state = _mix32(state + 0x7F4A7C15)
+        u3 = (state & 0xFFFF) / 65535.0
+        state = _mix32(state + 0x94D049BB)
+        u4 = (state & 0xFFFF) / 65535.0
+        ox = 1.2 + u1 * (CELL - 3.6)
+        oy = 1.2 + u2 * (CELL - 3.6)
+        dx = 1.6 + u3 * 6.5
+        dy = 5.0 + u4 * 10.0
+        specs.append((ox, oy, dx, dy))
+    return tuple(specs)
+
+
+def _tone_schedule(timeline: Timeline, columns: int) -> tuple[float, float, float, float]:
+    """Return ``(start_at, stagger, column_fade, dust_fade)`` in seconds.
+
+    ``start_at`` is when column 0 begins to crumble. Column ``i`` starts
+    ``i * stagger`` later. The top layer finishes ``column_fade`` after
+    that, and the ash particles finish ``dust_fade`` after the start.
+    The last column's top layer finishes about ``TONE_SWEEP`` after
+    column 0 starts, still before the bricks leave.
     """
     last_delay = timeline.delays[-1] if timeline.delays else 0.0
     settled = last_delay + timeline.fall + timeline.bounce
     start_at = settled + TONE_HOLD
     sweep = TONE_SWEEP
     column_fade = TONE_COLUMN_FADE
+    dust_fade = TONE_DUST_FADE
     latest_done = timeline.fade_at - 0.6
-    if start_at + sweep > latest_done:
+    trail = max(0.0, dust_fade - column_fade)
+    if start_at + sweep + trail > latest_done:
         start_at = settled + 0.25
-        sweep = max(0.8, latest_done - start_at)
+        sweep = max(0.8, latest_done - start_at - trail)
         column_fade = min(column_fade, max(0.2, sweep * 0.25))
-        if start_at + sweep > latest_done:
+        dust_fade = min(dust_fade, column_fade + trail, max(column_fade, latest_done - start_at - (sweep - column_fade)))
+        if start_at + sweep + max(0.0, dust_fade - column_fade) > latest_done:
             start_at = settled
-            sweep = max(0.45, latest_done - start_at)
+            trail = max(0.0, dust_fade - column_fade)
+            sweep = max(0.45, latest_done - start_at - trail)
             column_fade = min(column_fade, max(0.15, sweep * 0.25))
+            dust_fade = min(dust_fade, max(column_fade, column_fade + 0.15))
     count = max(int(columns), 1)
     stagger = 0.0 if count == 1 else (sweep - column_fade) / (count - 1)
-    return start_at, stagger, column_fade
+    return start_at, stagger, column_fade, dust_fade
 
 
 def _tone_css(timeline: Timeline, columns: int, speed: float = 1.0) -> str:
-    """Fade from the starting holiday colors to the ending ones.
+    """Crumble from the starting holiday colors into the ending ones.
 
     The completed Chinese graph stays visible briefly after the last
-    brick lands. Colors then sweep left to right, one week column at
-    a time, into the Western palette and hold that end state until
-    the existing exit fade. Each column has its own keyframes so the
-    stagger repeats on every loop. At 100% the colors jump back to
-    the start, which is hidden because the pieces have already left.
-    Reduced motion shows the end palette on the locked graph.
+    brick lands. Then, left to right, each week's top layer shrinks and
+    fades while a few ash particles drift down and to the right,
+    revealing the Western palette already underneath. Each column has
+    its own keyframes so the stagger repeats on every loop. At 100% the
+    top layer jumps back, which is hidden because the pieces have
+    already left. Reduced motion shows the end palette on the locked
+    graph, with the ash hidden.
     """
-    start_at, stagger, column_fade = _tone_schedule(timeline, columns)
+    start_at, stagger, column_fade, dust_fade = _tone_schedule(timeline, columns)
     total = timeline.total
     duration = _fmt(_at_speed(total, speed))
     leave_pct = _percent(timeline.fade_at, total)
     count = max(int(columns), 1)
     parts = [
-        f".tone-start,.tone-end{{animation-duration:{duration}s;"
+        f".tone-start,.dust{{animation-duration:{duration}s;"
         "animation-timing-function:linear;animation-iteration-count:infinite;"
-        "animation-fill-mode:backwards}"
+        "animation-fill-mode:backwards;transform-box:fill-box;transform-origin:center}"
     ]
     for col in range(count):
         fade_start = start_at + col * stagger
         fade_end = fade_start + column_fade
+        dust_end = fade_start + dust_fade
+        pop_at = fade_start + min(0.05, column_fade * 0.15)
         start_pct = _percent(fade_start, total)
         done_pct = _percent(fade_end, total)
+        pop_pct = _percent(pop_at, total)
+        dust_pct = _percent(dust_end, total)
         parts.append(
-            f"@keyframes ts{col}{{0%,{start_pct}%{{opacity:1}}{done_pct}%,{leave_pct}%{{opacity:0}}100%{{opacity:1}}}}"
-            f"@keyframes te{col}{{0%,{start_pct}%{{opacity:0}}{done_pct}%,{leave_pct}%{{opacity:1}}100%{{opacity:0}}}}"
+            f"@keyframes ts{col}{{0%,{start_pct}%{{opacity:1;transform:none}}"
+            f"{done_pct}%,{leave_pct}%{{opacity:0;transform:translate(1.3px,.8px) scale(.62)}}"
+            f"100%{{opacity:1;transform:none}}}}"
+            f"@keyframes ds{col}{{0%,{start_pct}%{{opacity:0;transform:translate(0,0)}}"
+            f"{pop_pct}%{{opacity:.9;transform:translate(0,0)}}"
+            f"{dust_pct}%,{leave_pct}%{{opacity:0;transform:translate(var(--dx),var(--dy))}}"
+            f"100%{{opacity:0;transform:translate(0,0)}}}}"
             f".ts{col}{{animation-name:ts{col}}}"
-            f".te{col}{{animation-name:te{col}}}"
+            f".ds{col}{{animation-name:ds{col}}}"
         )
     parts.append(
         "@media (prefers-reduced-motion:reduce){"
-        ".tone-start,.tone-end{animation:none}"
-        ".tone-start{opacity:0}"
+        ".tone-start,.dust{animation:none}"
+        ".tone-start,.dust{opacity:0}"
         ".tone-end{opacity:1}}"
     )
     return "".join(parts)
@@ -1589,15 +1650,26 @@ def render_svg(
         defs.append(f'<g id="b{theme[0]}{level}">{_brick(level, chosen)}</g>')
         if end_chosen is not None and level > 0:
             defs.append(f'<g id="b{theme[0]}{level}e">{_brick(level, end_chosen)}</g>')
+            color = chosen["levels"][level]
+            defs.append(
+                f'<rect id="d{theme[0]}{level}" width="1.6" height="1.6" rx="0.45" fill="{color}"/>'
+            )
 
-    def _swatch(level: int, x: float | int, y: float | int, col: int = 0) -> str:
+    def _swatch(level: int, x: float | int, y: float | int, col: int = 0, row: int = 0) -> str:
         start = f'<use href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
         if end_chosen is None or level == 0:
             return start
-        return (
-            f'<use class="tone-start ts{col}" href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
-            f'<use class="tone-end te{col}" href="#b{theme[0]}{level}e" x="{x}" y="{y}" opacity="0"/>'
-        )
+        parts = [
+            f'<use class="tone-end" href="#b{theme[0]}{level}e" x="{x}" y="{y}"/>',
+            f'<g class="tone-start ts{col}">{start}</g>',
+        ]
+        dust_id = f"d{theme[0]}{level}"
+        for ox, oy, dx, dy in dust_specs(col, row):
+            parts.append(
+                f'<g class="dust ds{col}" style="--dx:{_fmt(dx)}px;--dy:{_fmt(dy)}px">'
+                f'<use href="#{dust_id}" x="{_fmt(x + ox)}" y="{_fmt(y + oy)}"/></g>'
+            )
+        return "".join(parts)
 
     piece_markup: list[str] = []
     counts: dict[str, int] = {}
@@ -1610,7 +1682,7 @@ def render_svg(
             level = levels[row][col]
             x = origin_x + col * STEP
             y = origin_y + row * STEP
-            cells.append(_swatch(level, x, y, col))
+            cells.append(_swatch(level, x, y, col, row))
         joint_group = ""
         if joints:
             joint_group = f'<g class="joints" opacity="0" style="animation-delay:{delay}s">{joints}</g>'
@@ -1634,7 +1706,7 @@ def render_svg(
         x = legend_x + 34 + level * STEP
         y = caption_y - 9
         # The legend follows the last week, so it finishes with the wave.
-        legend.append(_swatch(level, x, y, columns - 1 if columns else 0))
+        legend.append(_swatch(level, x, y, columns - 1 if columns else 0, row=-(level + 1)))
     legend.append(f'<text x="{legend_x + 34 + 5 * STEP + 2}" y="{caption_y}">More</text>')
 
     summary = " ".join(f"{name}:{counts[name]}" for name in sorted(counts))
