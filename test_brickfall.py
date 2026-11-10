@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -2110,14 +2111,41 @@ class PaletteTests(unittest.TestCase):
                 self.assertIn(f'fill="{color}"', svg)
             self.assertIn("tone-start", svg)
             self.assertIn("tone-end", svg)
-            self.assertIn("@keyframes tone-start", svg)
-            self.assertIn("@keyframes tone-end", svg)
+            self.assertIn("@keyframes ts0", svg)
+            self.assertIn("@keyframes te0", svg)
             self.assertIn("prefers-reduced-motion", svg)
             self.assertIn(".tone-start{opacity:0}", svg)
             self.assertIn(".tone-end{opacity:1}", svg)
             # Empty cells stay the shared neutral and are not faded.
             self.assertIn(f'href="#b{theme[0]}0"', svg)
             self.assertNotIn(f'href="#b{theme[0]}0e"', svg)
+        # Colors sweep left to right: one keyframe pair per week column,
+        # and later columns start later. There is no per-cell rule.
+        light_fade = render_svg(calendar, pieces, "light", palette=fade)
+        starts = [
+            (int(match.group(1)), float(match.group(2)))
+            for match in re.finditer(r"@keyframes ts(\d+)\{0%,([0-9.]+)%", light_fade)
+        ]
+        self.assertEqual([index for index, _pct in starts], list(range(calendar.columns)))
+        self.assertEqual(light_fade.count("@keyframes ts"), calendar.columns)
+        self.assertEqual(light_fade.count("@keyframes te"), calendar.columns)
+        self.assertLess(starts[0][1], starts[-1][1])
+        self.assertIn('class="tone-start ts0"', light_fade)
+        self.assertIn(f'class="tone-start ts{calendar.columns - 1}"', light_fade)
+        # The two-week fixture must not invent a class for a third column.
+        self.assertNotIn("ts2", light_fade)
+        import json
+        demo = calendar_from_json(json.loads((ROOT / "demo" / "contributions.json").read_text(encoding="utf-8")))
+        demo_svg = render_svg(demo, pieces_for_calendar(demo, seed=0), "light", palette=fade)
+        demo_starts = [
+            (int(match.group(1)), float(match.group(2)))
+            for match in re.finditer(r"@keyframes ts(\d+)\{0%,([0-9.]+)%", demo_svg)
+        ]
+        self.assertEqual(len(demo_starts), demo.columns)
+        self.assertGreater(demo.columns, 2)
+        self.assertLess(demo_starts[0][1], demo_starts[1][1])
+        self.assertLess(demo_starts[1][1], demo_starts[-1][1])
+        self.assertEqual(demo_svg.count("@keyframes ts"), demo.columns)
         explicit = render_svg(calendar, pieces, "light", palette="lunarnewyear>valentine")
         # resolve_palette returns the same fade object values; render_svg
         # accepts the string form too via generate, but here pass the object.
@@ -2437,7 +2465,7 @@ class PaletteTests(unittest.TestCase):
             dark = (folder / "tetris-contrib-dark.svg").read_text(encoding="utf-8")
             for svg in (light, dark):
                 self.assertIn("tone-start", svg)
-                self.assertIn("@keyframes tone-end", svg)
+                self.assertIn("@keyframes te0", svg)
             for color in ("#ebc862", "#c50100", "#f7aee8", "#d81a37"):
                 self.assertIn(f'fill="{color}"', light)
                 self.assertIn(f'fill="{color}"', dark)
@@ -2602,7 +2630,7 @@ class PaletteTests(unittest.TestCase):
             fade_light, fade_dark = valentine_2029
             self.assertIn("tone-start", fade_light)
             self.assertIn("tone-end", fade_light)
-            self.assertIn("@keyframes tone-start", fade_light)
+            self.assertIn("@keyframes ts0", fade_light)
             self.assertIn('fill="#ebc862"', fade_light)
             self.assertIn('fill="#f7aee8"', fade_light)
             self.assertIn('fill="#830010"', fade_dark)

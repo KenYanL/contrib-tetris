@@ -1462,51 +1462,81 @@ def _fall_css(timeline: Timeline, speed: float = 1.0) -> str:
     )
 
 
-def _tone_css(timeline: Timeline, speed: float = 1.0) -> str:
-    """Fade from the starting holiday colors to the ending ones.
+# After the bricks settle, hold the Chinese palette, then sweep from
+# left to right. The whole wave is about 1.8s; each week column
+# cross-fades in 0.35s. Later columns start later, so the change
+# reads as a wave instead of the whole graph fading at once.
+TONE_HOLD = 0.7
+TONE_SWEEP = 1.8
+TONE_COLUMN_FADE = 0.35
 
-    The completed Chinese graph stays visible briefly after the last
-    brick lands, then cross-fades into the Western palette and holds
-    that end state until the existing exit fade. At 100% the colors
-    jump back to the start, which is hidden because the pieces have
-    already left. Reduced motion shows the end palette on the locked
-    graph.
+
+def _tone_schedule(timeline: Timeline, columns: int) -> tuple[float, float, float]:
+    """Return ``(start_at, stagger, column_fade)`` in unscaled seconds.
+
+    ``start_at`` is when column 0 begins to fade. Column ``i`` starts
+    ``i * stagger`` later and finishes ``column_fade`` after that.
+    The last column finishes about ``TONE_SWEEP`` after column 0 starts,
+    and still before the bricks leave.
     """
     last_delay = timeline.delays[-1] if timeline.delays else 0.0
     settled = last_delay + timeline.fall + timeline.bounce
-    start_at = settled + 0.7
-    done_at = start_at + 1.25
+    start_at = settled + TONE_HOLD
+    sweep = TONE_SWEEP
+    column_fade = TONE_COLUMN_FADE
     latest_done = timeline.fade_at - 0.6
-    if done_at > latest_done:
-        done_at = max(settled + 0.45, latest_done)
-        start_at = min(start_at, max(settled + 0.25, done_at - 1.25))
-        if start_at >= done_at:
+    if start_at + sweep > latest_done:
+        start_at = settled + 0.25
+        sweep = max(0.8, latest_done - start_at)
+        column_fade = min(column_fade, max(0.2, sweep * 0.25))
+        if start_at + sweep > latest_done:
             start_at = settled
-            done_at = min(settled + 0.8, timeline.fade_at)
+            sweep = max(0.45, latest_done - start_at)
+            column_fade = min(column_fade, max(0.15, sweep * 0.25))
+    count = max(int(columns), 1)
+    stagger = 0.0 if count == 1 else (sweep - column_fade) / (count - 1)
+    return start_at, stagger, column_fade
+
+
+def _tone_css(timeline: Timeline, columns: int, speed: float = 1.0) -> str:
+    """Fade from the starting holiday colors to the ending ones.
+
+    The completed Chinese graph stays visible briefly after the last
+    brick lands. Colors then sweep left to right, one week column at
+    a time, into the Western palette and hold that end state until
+    the existing exit fade. Each column has its own keyframes so the
+    stagger repeats on every loop. At 100% the colors jump back to
+    the start, which is hidden because the pieces have already left.
+    Reduced motion shows the end palette on the locked graph.
+    """
+    start_at, stagger, column_fade = _tone_schedule(timeline, columns)
     total = timeline.total
     duration = _fmt(_at_speed(total, speed))
-    start_pct = _percent(start_at, total)
-    done_pct = _percent(done_at, total)
     leave_pct = _percent(timeline.fade_at, total)
-    return (
+    count = max(int(columns), 1)
+    parts = [
         f".tone-start,.tone-end{{animation-duration:{duration}s;"
         "animation-timing-function:linear;animation-iteration-count:infinite;"
         "animation-fill-mode:backwards}"
-        ".tone-start{animation-name:tone-start}"
-        ".tone-end{animation-name:tone-end}"
-        "@keyframes tone-start{"
-        f"0%,{start_pct}%{{opacity:1}}"
-        f"{done_pct}%,{leave_pct}%{{opacity:0}}"
-        "100%{opacity:1}}"
-        "@keyframes tone-end{"
-        f"0%,{start_pct}%{{opacity:0}}"
-        f"{done_pct}%,{leave_pct}%{{opacity:1}}"
-        "100%{opacity:0}}"
+    ]
+    for col in range(count):
+        fade_start = start_at + col * stagger
+        fade_end = fade_start + column_fade
+        start_pct = _percent(fade_start, total)
+        done_pct = _percent(fade_end, total)
+        parts.append(
+            f"@keyframes ts{col}{{0%,{start_pct}%{{opacity:1}}{done_pct}%,{leave_pct}%{{opacity:0}}100%{{opacity:1}}}}"
+            f"@keyframes te{col}{{0%,{start_pct}%{{opacity:0}}{done_pct}%,{leave_pct}%{{opacity:1}}100%{{opacity:0}}}}"
+            f".ts{col}{{animation-name:ts{col}}}"
+            f".te{col}{{animation-name:te{col}}}"
+        )
+    parts.append(
         "@media (prefers-reduced-motion:reduce){"
         ".tone-start,.tone-end{animation:none}"
         ".tone-start{opacity:0}"
         ".tone-end{opacity:1}}"
     )
+    return "".join(parts)
 
 
 def _palette_pair(palette: str | PaletteTransition) -> tuple[str, str | None]:
@@ -1560,13 +1590,13 @@ def render_svg(
         if end_chosen is not None and level > 0:
             defs.append(f'<g id="b{theme[0]}{level}e">{_brick(level, end_chosen)}</g>')
 
-    def _swatch(level: int, x: float | int, y: float | int) -> str:
+    def _swatch(level: int, x: float | int, y: float | int, col: int = 0) -> str:
         start = f'<use href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
         if end_chosen is None or level == 0:
             return start
         return (
-            f'<use class="tone-start" href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
-            f'<use class="tone-end" href="#b{theme[0]}{level}e" x="{x}" y="{y}" opacity="0"/>'
+            f'<use class="tone-start ts{col}" href="#b{theme[0]}{level}" x="{x}" y="{y}"/>'
+            f'<use class="tone-end te{col}" href="#b{theme[0]}{level}e" x="{x}" y="{y}" opacity="0"/>'
         )
 
     piece_markup: list[str] = []
@@ -1580,7 +1610,7 @@ def render_svg(
             level = levels[row][col]
             x = origin_x + col * STEP
             y = origin_y + row * STEP
-            cells.append(_swatch(level, x, y))
+            cells.append(_swatch(level, x, y, col))
         joint_group = ""
         if joints:
             joint_group = f'<g class="joints" opacity="0" style="animation-delay:{delay}s">{joints}</g>'
@@ -1603,7 +1633,8 @@ def render_svg(
     for level in range(5):
         x = legend_x + 34 + level * STEP
         y = caption_y - 9
-        legend.append(_swatch(level, x, y))
+        # The legend follows the last week, so it finishes with the wave.
+        legend.append(_swatch(level, x, y, columns - 1 if columns else 0))
     legend.append(f'<text x="{legend_x + 34 + 5 * STEP + 2}" y="{caption_y}">More</text>')
 
     summary = " ".join(f"{name}:{counts[name]}" for name in sorted(counts))
@@ -1614,7 +1645,7 @@ def render_svg(
     )
     css = _fall_css(timeline, speed)
     if end_name is not None:
-        css += _tone_css(timeline, speed)
+        css += _tone_css(timeline, columns, speed)
     font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
