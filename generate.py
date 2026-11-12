@@ -134,6 +134,20 @@ def parse_speed(raw: object) -> float:
     return value
 
 
+def parse_palette_date(raw: object) -> date:
+    """Return the UTC day ``auto`` should pick colors for, or raise InputError.
+
+    Only ``YYYY-MM-DD`` is accepted, so a holiday can be previewed on any day.
+    """
+    hint = "Use a UTC calendar day written YYYY-MM-DD, for example 2029-02-14."
+    if not isinstance(raw, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw.strip()):
+        raise InputError(f"--palette-date is {raw!r}, which is not a YYYY-MM-DD date. {hint}")
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError:
+        raise InputError(f"--palette-date is {raw!r}, which is not a real calendar day. {hint}") from None
+
+
 def checked_username(username: str | None, *, required: bool) -> str | None:
     """Return a usable login, or None when an optional override was omitted."""
     if username is None or username == "":
@@ -349,6 +363,14 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
         default="default",
         help=palette_cli_help(),
     )
+    parser.add_argument(
+        "--palette-date",
+        help=(
+            "Pick the auto palette as if the UTC date were this YYYY-MM-DD day, "
+            "for example 2029-02-14 to preview the Lunar New Year to Valentine fade. "
+            "Only the colors change; the calendar is still read or fetched as usual"
+        ),
+    )
     parser.add_argument("--print-stats", action="store_true", help="Print the piece inventory")
     args = parser.parse_args(argv)
 
@@ -357,7 +379,8 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
         speed = parse_speed(args.speed)
         palette_name = parse_palette(args.palette)
         day = today if today is not None else datetime.now(timezone.utc).date()
-        palette = resolve_palette(palette_name, day)
+        palette_day = parse_palette_date(args.palette_date) if args.palette_date is not None else day
+        palette = resolve_palette(palette_name, palette_day)
         relative = _relative_paths_required()
         used_out: Path | None = None
         if args.light is not None or args.dark is not None:

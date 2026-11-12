@@ -2526,6 +2526,47 @@ class PaletteTests(unittest.TestCase):
             readme = (ROOT / "README.md").read_text(encoding="utf-8")
             self.assertIn("lunarnewyear>valentine", readme)
 
+    def test_palette_date_previews_auto_without_changing_today(self) -> None:
+        import json
+
+        payload = _json_calendar(
+            "demo",
+            date(2026, 10, 11),
+            date(2026, 10, 17),
+            {date(2026, 10, 12): (4, 2)},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "calendar.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+
+            def render(name: str, extra: list[str]) -> tuple[int, str, str]:
+                folder = Path(tmp) / name
+                argv = ["--input", str(source), "--out", str(folder), "--palette", "auto", *extra]
+                stderr = io.StringIO()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                    code = generate.main(argv, today=date(2026, 11, 1))
+                light = folder / "tetris-contrib.svg"
+                return code, stderr.getvalue(), light.read_text(encoding="utf-8") if light.exists() else ""
+
+            code, err, ordinary = render("ordinary", [])
+            self.assertEqual(code, 0, err)
+            code, err, halloween = render("halloween", ["--palette-date", "2026-10-31"])
+            self.assertEqual(code, 0, err)
+            code, err, fade = render("fade", ["--palette-date", " 2029-02-14 "])
+            self.assertEqual(code, 0, err)
+            self.assertNotIn('fill="#ffd642"', ordinary)
+            self.assertIn('fill="#ffd642"', halloween)
+            self.assertIn('class="dust ds', fade)
+            self.assertNotIn('class="dust ds', halloween)
+
+            for bad in ("2026-02-30", "20261031", "2026-1-31", "", "tomorrow"):
+                code, err, light = render("bad", ["--palette-date", bad])
+                self.assertEqual(code, 1, bad)
+                self.assertIn("--palette-date", err)
+                self.assertIn("YYYY-MM-DD", err)
+                self.assertNotIn("Traceback", err)
+                self.assertEqual(light, "")
+
     def test_cli_auto_palette_follows_injected_date_not_the_clock(self) -> None:
         import json
 
