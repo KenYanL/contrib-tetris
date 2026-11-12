@@ -10,6 +10,10 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- Optional `midautumn` value for the `palette` input (`--palette midautumn`). Both SVGs use [ColorsWall's Mooncake egg yolk autumn lantern festival palette](https://colorswall.com/palette/85955) (`#fca454`, `#eb710f`, `#a57547`, `#964802`; `#ce5704` and `#946444` are dropped), lightest to darkest. Level 0 stays the neutral empty-cell color from the default graph (`#eff2f5` light, `#151b23` dark). Light levels 1-4 are `#fca454 #eb710f #a57547 #964802`. Dark levels 1-4 are `#964802 #a57547 #eb710f #fca454`. Mid-Autumn Festival falls on a different Gregorian date each year, so `auto` uses a fixed table of UTC dates for 2026-2035 (the 15th day of the 8th lunar month in the [Hong Kong Observatory](https://www.hko.gov.hk/en/gts/time/conversion.htm) conversion tables, also listed by [Wikipedia](https://en.wikipedia.org/wiki/Mid-Autumn_Festival) and [timeanddate](https://www.timeanddate.com/holidays/china/mid-autumn-festival)): 2026-09-25, 2027-09-15, 2028-10-03, 2029-09-22, 2030-09-12, 2031-10-01, 2032-09-19, 2033-09-08, 2034-09-27, and 2035-09-16. Christmas covers three UTC days, so Mid-Autumn uses that same length: the tabulated day and the two UTC days after it. A year outside the table stays on the green graph. The 2026-2035 window never shares a day with Halloween, Christmas, New Year, Valentine's Day, or Lunar New Year; if a later Western holiday did, `auto` would fade from `midautumn` to that palette (2026-11-23).
+
 ## [v1.5.0] - 2026-11-16
 
 ### Added
