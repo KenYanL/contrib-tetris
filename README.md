@@ -162,9 +162,12 @@ python3 generate.py --input sample/contributions.json --out dist --palette lunar
 python3 generate.py --input sample/contributions.json --out dist --palette valentine
 python3 generate.py --input sample/contributions.json --out dist --palette lunarnewyear>valentine
 python3 generate.py --input sample/contributions.json --out dist --palette auto
+python3 generate.py --input sample/contributions.json --out dist --palette auto --palette-date 2029-02-14
 ```
 
 `--palette` is the same choice as the action's `palette` input. `auto` reads the UTC date when the process starts. Halloween is 31 October. Christmas is 24, 25, and 26 December. New Year's Day is 1 January. Valentine's Day is 14 February. Lunar New Year is the tabulated UTC date and the two following days, for 2026-2035 only. When those dates coincide, the graph starts in the Chinese festival colors and, left to right, those bricks crumble into ash to reveal the Western holiday colors. `lunarnewyear>valentine` paints that fade on any day.
+
+`--palette-date YYYY-MM-DD` (CLI only) makes `auto` pick colors as if the UTC date were that day, so a holiday can be previewed before it arrives. `--palette auto --palette-date 2029-02-14` shows the Lunar New Year to Valentine fade. Only the colors change: the calendar is still read from `--input` or fetched for today.
 
 `.github/workflows/tetris.yml` runs the tests on every push and pull request. On a daily cron (`41 7 * * *`), on `workflow_dispatch`, and on pushes to `main`, it renders the seeded `demo/contributions.json` calendar (username label `demo`) and writes:
 
