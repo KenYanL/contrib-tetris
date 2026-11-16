@@ -2434,6 +2434,28 @@ class PaletteTests(unittest.TestCase):
             self.assertIn("2026-02-17", readme)
             self.assertIn("2035-02-08", readme)
 
+    def test_shell_examples_quote_fade_palettes(self) -> None:
+        """A bare '>' in a shell example would redirect output instead of fading."""
+        sources = {
+            "README.md": (ROOT / "README.md").read_text(encoding="utf-8"),
+            "generate.py": (ROOT / "generate.py").read_text(encoding="utf-8"),
+        }
+        checked = 0
+        for name, text in sources.items():
+            for line in text.splitlines():
+                if "python3 generate.py" not in line or ">" not in line:
+                    continue
+                checked += 1
+                for match in re.finditer(r"--palette\s+(\S+)", line):
+                    value = match.group(1)
+                    if ">" in value:
+                        self.assertRegex(
+                            value,
+                            r"^(['\"]).*>.*\1$",
+                            f"{name}: quote the fade value in: {line.strip()}",
+                        )
+        self.assertGreaterEqual(checked, 2)
+
     def test_cli_palette_flag_selects_valentine(self) -> None:
         import json
 
