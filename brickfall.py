@@ -170,6 +170,60 @@ LUNAR_NEW_YEAR_DATES: tuple[date, ...] = (
 LUNAR_NEW_YEAR_SPAN_DAYS = 3
 VALENTINE_DAY = (2, 14)
 
+# ColorsWall's Mooncake egg yolk autumn lantern festival palette
+# (https://colorswall.com/palette/85955):
+# fca454, eb710f, ce5704, a57547, 964802, 946444.
+# #ce5704 (a harsher orange) and #946444 (too close to the remaining
+# crust browns) are dropped. Level 0 keeps the neutral GitHub empty
+# cell. The other four colors run from lightest to darkest on the
+# light graph and the reverse on the dark graph. Text and the cell
+# border match the default theme.
+# Light: #eff2f5 #fca454 #eb710f #a57547 #964802
+# Dark:  #151b23 #964802 #a57547 #eb710f #fca454
+MIDAUTUMN_PALETTES: dict[str, dict[str, object]] = {
+    "light": {
+        "levels": ("#eff2f5", "#fca454", "#eb710f", "#a57547", "#964802"),
+        "text": "#59636e",
+        "border": "rgba(31,35,40,0.06)",
+    },
+    "dark": {
+        "levels": ("#151b23", "#964802", "#a57547", "#eb710f", "#fca454"),
+        "text": "#9198a1",
+        "border": "rgba(240,246,252,0.05)",
+    },
+}
+
+# Mid-Autumn Festival (中秋) is the 15th day of the 8th lunar month,
+# as a UTC calendar date. These are that day in the Hong Kong
+# Observatory Gregorian-Lunar conversion tables
+# (https://www.hko.gov.hk/en/gts/time/conversion.htm). The same days are
+# listed for Mid-Autumn Festival by
+# https://en.wikipedia.org/wiki/Mid-Autumn_Festival and
+# https://www.timeanddate.com/holidays/china/mid-autumn-festival.
+# ``auto`` does not shift them for China Standard Time: the UTC calendar
+# day equal to this Gregorian date is the festival day. A year that is
+# not in the table is never midautumn. The dates fall between 8
+# September and 3 October in 2026-2035, so the three-day window never
+# reaches Halloween, Christmas, New Year, Valentine's Day, or Lunar
+# New Year. If a later Western holiday shared one of these days,
+# ``auto`` would fade from this palette to the Western one.
+MIDAUTUMN_DATES: tuple[date, ...] = (
+    date(2026, 9, 25),
+    date(2027, 9, 15),
+    date(2028, 10, 3),
+    date(2029, 9, 22),
+    date(2030, 9, 12),
+    date(2031, 10, 1),
+    date(2032, 9, 19),
+    date(2033, 9, 8),
+    date(2034, 9, 27),
+    date(2035, 9, 16),
+)
+# Christmas covers three UTC days (24-26 December). Mid-Autumn uses
+# that same length as Lunar New Year: the tabulated day and the two
+# UTC days after it.
+MIDAUTUMN_SPAN_DAYS = 3
+
 @dataclass(frozen=True)
 class PaletteTransition:
     """A color fade from one concrete palette to another.
@@ -276,6 +330,15 @@ PALETTE_CATALOG: tuple[tuple[str, PaletteSpec], ...] = (
             LUNAR_NEW_YEAR_PALETTES,
             "SchemeColor's Chinese gold and red palette",
             auto_dates=_holiday_window(LUNAR_NEW_YEAR_DATES, LUNAR_NEW_YEAR_SPAN_DAYS),
+            tradition="chinese",
+        ),
+    ),
+    (
+        "midautumn",
+        PaletteSpec(
+            MIDAUTUMN_PALETTES,
+            "ColorsWall's mooncake egg yolk palette",
+            auto_dates=_holiday_window(MIDAUTUMN_DATES, MIDAUTUMN_SPAN_DAYS),
             tradition="chinese",
         ),
     ),
@@ -582,17 +645,19 @@ def resolve_palette(name: str, today: date) -> str | PaletteTransition:
     """Return the concrete palette, or a fade, for ``name`` on ``today``.
 
     ``default``, ``halloween``, ``christmas``, ``newyear``,
-    ``valentine``, and ``lunarnewyear`` are returned as given. A name
+    ``valentine``, ``lunarnewyear``, and ``midautumn`` are returned as given. A name
     such as ``lunarnewyear>valentine`` becomes a ``PaletteTransition``.
     ``auto`` follows ``PALETTE_CATALOG``: halloween on 31 October,
     christmas on 24-26 December, newyear on 1 January, valentine on 14
-    February, and lunarnewyear on each tabulated Lunar New Year date
-    plus the next two UTC days (2026-2035). When a Chinese traditional
-    festival and a Western holiday share a UTC day, ``auto`` fades from
-    the Chinese palette to the Western one (14 February 2029 is
-    lunarnewyear fading into valentine). 1 January stays newyear.
-    Every other day is ``default``, including 31 December, 2 January,
-    and a Lunar New Year in a year the table does not list. ``today`` is
+    February, lunarnewyear on each tabulated Lunar New Year date
+    plus the next two UTC days (2026-2035), and midautumn on each
+    tabulated Mid-Autumn Festival date plus the next two UTC days
+    (2026-2035). When a Chinese traditional festival and a Western holiday
+    share a UTC day, ``auto`` fades from the Chinese palette to the
+    Western one (14 February 2029 is lunarnewyear fading into valentine).
+    1 January stays newyear. Every other day is ``default``, including
+    31 December, 2 January, and a Lunar New Year or Mid-Autumn Festival
+    in a year the table does not list. ``today`` is
     the calendar day to test. This does not read the clock; pass the
     current UTC date when the caller means now.
     """
